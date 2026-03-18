@@ -509,17 +509,12 @@ async def launch_browser(profile_name: str,
         print(f"  Close the browser window to exit.\n")
 
         # Keep alive - handle browser dying gracefully
+        disconnected = asyncio.Event()
+        browser.on("disconnected", lambda: disconnected.set())
         try:
-            while True:
-                await asyncio.sleep(1)
-                try:
-                    # This throws if browser is already closed
-                    if not browser.pages:
-                        break
-                except Exception:
-                    break
-        except (KeyboardInterrupt, asyncio.CancelledError):
-            pass
+            await asyncio.wait_for(disconnected.wait(), timeout=3600)
+        except (asyncio.TimeoutError, KeyboardInterrupt, asyncio.CancelledError):
+            pass        
         finally:
             try:
                 await browser.close()

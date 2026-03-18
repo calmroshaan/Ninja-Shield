@@ -404,7 +404,6 @@ class LaunchWorker(QThread):
             import asyncio
             import traceback
             loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
             try:
                 loop.run_until_complete(launch_browser(self.profile_name, profiles_dir=PROFILES_DIR))
             finally:

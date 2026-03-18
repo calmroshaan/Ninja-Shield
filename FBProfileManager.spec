@@ -1,12 +1,24 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 
+from PyInstaller.utils.hooks import collect_all
+playwright_datas, playwright_binaries, playwright_hiddenimports = collect_all('playwright')
+
 a = Analysis(
     ['gui.py'],
     pathex=[],
-    binaries=[],
-    datas=[('icon.ico', '.')],
-    hiddenimports=[],
+    binaries=playwright_binaries,
+    datas=[('icon.ico', '.')] + playwright_datas,
+    hiddenimports=playwright_hiddenimports + [    'playwright',
+    'playwright.async_api',
+    'playwright._impl._api_types',
+    'playwright._impl._browser_context',
+    'browser_launcher',
+    'fingerprint_engine',
+    'license_manager',
+    'asyncio',
+    'urllib.parse',
+    'urllib.request',],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

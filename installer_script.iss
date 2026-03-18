@@ -5,8 +5,8 @@ AppPublisher=Roshaan
 DefaultDirName={autopf}\FBProfileManager
 DefaultGroupName=FB Profile Manager
 OutputBaseFilename=FBProfileManager_Setup
-SetupIconFile=D:\AAA\MY FOLDER\Projects\other\fb-profile-manager-main\icon.ico
-OutputDir=D:\AAA\MY FOLDER\Projects\other\fb-profile-manager-main\installer
+SetupIconFile={#SourcePath}\icon.ico
+OutputDir={#SourcePath}\installer
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -19,8 +19,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
 
 [Files]
-Source: "D:\AAA\MY FOLDER\Projects\other\fb-profile-manager-main\dist\FBProfileManager\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-
+Source: "{#SourcePath}\dist\FBProfileManager\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 [Icons]
 Name: "{group}\FB Profile Manager"; Filename: "{app}\FBProfileManager.exe"; IconFilename: "{app}\FBProfileManager.exe"
 Name: "{commondesktop}\FB Profile Manager"; Filename: "{app}\FBProfileManager.exe"; IconFilename: "{app}\FBProfileManager.exe"; Tasks: desktopicon
