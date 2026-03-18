@@ -1,0 +1,39 @@
+# -- Profile Data (private! contains your VPN cities & fingerprints) --
+profiles/
+
+# -- Python ---------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-selfcheck.json
+
+# -- Virtual Environments -------------------------------------
+venv/
+env/
+.venv/
+.env/
+
+# -- OS Files -------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# -- IDE ------------------------------------------------------
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# -- Playwright -----------------------------------------------
+playwright-report/
+test-results/
+
+# -- Logs & temp ----------------------------------------------
+*.log
+*.tmp
