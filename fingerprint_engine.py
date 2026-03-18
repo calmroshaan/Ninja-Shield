@@ -67,7 +67,7 @@ def get_timezone_for_city(city: str) -> str:
             "format": "json",
             "limit": 1
         })
-        req = urllib.request.Request(geo_url, headers={"User-Agent": "FBProfileManager/4.0"})
+        req = urllib.request.Request(geo_url, headers={"User-Agent": "NinjaShield/4.0"})
         with urllib.request.urlopen(req, timeout=8) as resp:
             geo_data = json.loads(resp.read().decode())
 

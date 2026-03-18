@@ -1,5 +1,5 @@
 """
-FB Profile Manager - PyQt6 GUI
+Ninja Shield - PyQt6 GUI
 Option 2: Tabbed Control Center
 """
 
@@ -30,7 +30,7 @@ def resource_path(relative_path):
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.abspath("."), relative_path)
-PROFILES_DIR = os.path.join(os.path.expanduser("~"), "FBProfileManager", "profiles")
+PROFILES_DIR = os.path.join(os.path.expanduser("~"), "NinjaShield", "profiles")
 os.makedirs(PROFILES_DIR, exist_ok=True)
 
 # ─── Stylesheet ───────────────────────────────────────────────────────────────
@@ -248,7 +248,7 @@ class ActivationWindow(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("FB Profile Manager — Activation")
+        self.setWindowTitle("Ninja Shield — Activation")
         self.setWindowIcon(QIcon(resource_path("icon.ico")))
         self.setFixedSize(480, 340)
         self.setStyleSheet(STYLE)
@@ -261,7 +261,7 @@ class ActivationWindow(QWidget):
         layout.setSpacing(0)
 
         # Logo
-        logo = QLabel("◈  FB Profile Manager")
+        logo = QLabel("◈  Ninja Shield")
         logo.setStyleSheet("font-size: 18px; font-weight: 800; color: #a78bfa;")
         layout.addWidget(logo)
 
@@ -412,7 +412,7 @@ class LaunchWorker(QThread):
             error_details = traceback.format_exc()
             self.log.emit(f"[ERROR] {e}")
             self.log.emit(f"[DETAILS] {error_details}")
-            log_path = os.path.join(os.path.expanduser("~"), "FBProfileManager", "error.log")
+            log_path = os.path.join(os.path.expanduser("~"), "NinjaShield", "error.log")
             with open(log_path, "w") as f:
                 f.write(error_details)
             self.log.emit(f"[LOG SAVED] {log_path}")
@@ -1155,7 +1155,7 @@ class LaunchTab(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("FB Profile Manager v4")
+        self.setWindowTitle("Ninja Shield v4")
         self.setWindowIcon(QIcon(resource_path("icon.ico")))
         self.setMinimumSize(900, 620)
         self.setStyleSheet(STYLE)
@@ -1176,7 +1176,7 @@ class MainWindow(QMainWindow):
         h_layout = QHBoxLayout(header)
         h_layout.setContentsMargins(20, 0, 20, 0)
 
-        logo_label = QLabel("◈  FB Profile Manager")
+        logo_label = QLabel("◈  Ninja Shield")
         logo_label.setStyleSheet("font-size: 15px; font-weight: 800; color: #a78bfa; letter-spacing: -0.3px;")
         h_layout.addWidget(logo_label)
         h_layout.addStretch()
@@ -1215,7 +1215,7 @@ class MainWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(resource_path("icon.ico")))
-    app.setApplicationName("FB Profile Manager")
+    app.setApplicationName("Ninja Shield")
 
     result = check_license()
 

@@ -1,5 +1,5 @@
 """
-License Manager - FB Profile Manager
+License Manager - Ninja Shield
 Offline license validation with hardware binding.
 Keys encode expiry duration and are bound to machine Hardware ID.
 """
