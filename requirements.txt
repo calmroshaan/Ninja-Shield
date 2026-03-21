@@ -1,0 +1,4 @@
+camoufox[geoip]
+PyQt6
+packaging
+psutil
