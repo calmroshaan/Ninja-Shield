@@ -78,7 +78,7 @@ if (typeof RTCPeerConnection !== 'undefined') {
 
 
 async def launch_browser(profile_name: str,
-                          url: str = "about:newtab",
+                          url: str = "about:blank",
                           profiles_dir: str = "profiles",
                           headless: bool = False):
     from camoufox.async_api import AsyncCamoufox
@@ -144,6 +144,7 @@ async def launch_browser(profile_name: str,
         fonts=fp.get("fonts", ["Arial", "Verdana"]),
         block_webrtc=False,
         window=(win_width, win_height - 80),
+        config={"timezone": fp["timezone"]},
         firefox_user_prefs={
             "browser.tabs.selectOwnerOnClose": True,
             "ui.key.menuAccessKeyFocuses": False,
