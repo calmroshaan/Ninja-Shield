@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QTabWidget, QTableWidget, QTableWidgetItem, QPushButton, QLabel,
     QLineEdit, QDialog, QDialogButtonBox, QMessageBox, QHeaderView,
     QFrame, QSplitter, QTextEdit, QFormLayout, QScrollArea, QGridLayout,
-    QAbstractItemView, QStatusBar, QProgressDialog
+    QAbstractItemView, QStatusBar, QProgressDialog, QProgressBar
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize
 from PyQt6.QtGui import QFont, QColor, QPalette, QIcon
@@ -1236,18 +1236,65 @@ class LaunchTab(QWidget):
 
 # ─── Camoufox Setup Dialog ────────────────────────────────────────────────────
 class CamoufoxDownloadWorker(QThread):
-    progress_text = pyqtSignal(str)
-    finished      = pyqtSignal(bool, str)  # success, error_message
+    progress_text    = pyqtSignal(str)
+    progress_percent = pyqtSignal(int)   # 0–100
+    finished         = pyqtSignal(bool, str)  # success, error_message
 
     def run(self):
         try:
+            import requests, tempfile, shlex, os, zipfile
+            from camoufox.pkgman import CamoufoxFetcher, INSTALL_DIR, OS_NAME
+
+            self.progress_text.emit("Fetching latest Camoufox release info...")
+            fetcher = CamoufoxFetcher()
+            url = fetcher.url
+
+            # Clean up old install
+            fetcher.cleanup()
+            INSTALL_DIR.mkdir(parents=True, exist_ok=True)
+
             self.progress_text.emit("Downloading Camoufox browser engine (~530 MB)...")
-            from camoufox.pkgman import CamoufoxFetcher
-            CamoufoxFetcher().install()
+
+            tmp_path = os.path.join(tempfile.gettempdir(), "camoufox_download.zip")
+            downloaded = 0
+
+            with requests.get(url, stream=True, timeout=60) as resp:
+                resp.raise_for_status()
+                total = int(resp.headers.get("Content-Length", 0))
+
+                with open(tmp_path, "wb") as tmp:
+                    for chunk in resp.iter_content(chunk_size=1024 * 256):
+                        if chunk:
+                            tmp.write(chunk)
+                            downloaded += len(chunk)
+                            if total > 0:
+                                pct = min(int(downloaded * 100 / total), 98)
+                                self.progress_percent.emit(pct)
+                                mb_done = downloaded / 1_048_576
+                                mb_total = total / 1_048_576
+                                self.progress_text.emit(
+                                    f"Downloading... {mb_done:.0f} MB / {mb_total:.0f} MB ({pct}%)"
+                                )
+
+            self.progress_text.emit("Extracting Camoufox...")
+            self.progress_percent.emit(99)
+
+            # Extract directly from disk file — never load 530MB into RAM
+            with zipfile.ZipFile(tmp_path, "r") as zf:
+                zf.extractall(str(INSTALL_DIR))
+
+            os.unlink(tmp_path)
+
+            fetcher.set_version()
+
+            if OS_NAME != "win":
+                os.system(f"chmod -R 755 {shlex.quote(str(INSTALL_DIR))}")  # nosec
+
+            self.progress_percent.emit(100)
             self.finished.emit(True, "")
         except Exception as e:
-            self.finished.emit(False, str(e))
-
+            import traceback
+            self.finished.emit(False, f"{e}\n{traceback.format_exc()}")
 class CamoufoxSetupDialog(QDialog):
     setup_complete = pyqtSignal()
 
@@ -1282,6 +1329,19 @@ class CamoufoxSetupDialog(QDialog):
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFixedHeight(18)
+        self.progress_bar.setStyleSheet(
+            "QProgressBar { border: 1px solid #374151; border-radius: 4px; "
+            "background: #1f2937; color: #e5e7eb; font-size: 11px; text-align: center; } "
+            "QProgressBar::chunk { background: #7c3aed; border-radius: 3px; }"
+        )
+        self.progress_bar.setVisible(False)
+        layout.addWidget(self.progress_bar)
+
         layout.addStretch()
 
         btn_row = QHBoxLayout()
@@ -1306,8 +1366,17 @@ class CamoufoxSetupDialog(QDialog):
         self.btn_exit.setEnabled(True)
         self.status_label.setText("Please wait, downloading...")
 
+        self.progress_bar.setValue(0)
+        self.progress_bar.setVisible(True)
+
+        self._ui_timer = QTimer(self)
+        self._ui_timer.setInterval(50)
+        self._ui_timer.timeout.connect(lambda: QApplication.processEvents())
+        self._ui_timer.start()
+
         self.worker = CamoufoxDownloadWorker()
         self.worker.progress_text.connect(self.status_label.setText)
+        self.worker.progress_percent.connect(self.progress_bar.setValue)
         self.worker.finished.connect(self._on_finished)
         self.btn_exit.clicked.disconnect()
         self.btn_exit.clicked.connect(self._cancel_download)
@@ -1320,6 +1389,8 @@ class CamoufoxSetupDialog(QDialog):
         self.reject()
 
     def _on_finished(self, success, error_msg):
+        if hasattr(self, '_ui_timer'):
+            self._ui_timer.stop()
         if success:
             self.status_label.setText("✓ Download complete! Launching Ninja Shield...")
             self.setup_complete.emit()
@@ -1354,6 +1425,21 @@ class MainWindow(QMainWindow):
         Path(PROFILES_DIR).mkdir(exist_ok=True)
         self._build_ui()
 
+    def closeEvent(self, event):
+        import tempfile
+        import os
+
+        lock_file = os.path.join(tempfile.gettempdir(), "ninjashield.lock")
+
+        try:
+            if os.path.exists(lock_file):
+                os.remove(lock_file)
+        except:
+            pass
+
+        event.accept()
+        QApplication.instance().quit()
+        os._exit(0)
     def _build_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
@@ -1452,26 +1538,43 @@ def main():
     lock_file = os.path.join(tempfile.gettempdir(), "ninjashield.lock")
     try:
         if os.path.exists(lock_file):
-            # Check if the process is actually still running
-            with open(lock_file, 'r') as f:
-                old_pid = int(f.read().strip())
-            import psutil
-            if psutil.pid_exists(old_pid):
-                # Another instance is already running
-                app = QApplication(sys.argv)
-                QMessageBox.warning(
-                    None,
-                    "Ninja Shield Already Running",
-                    "Ninja Shield is already running.\nCheck your taskbar."
-                )
-                sys.exit(0)
+            try:
+                with open(lock_file, 'r') as f:
+                    old_pid = int(f.read().strip())
+
+
+                import psutil
+                if psutil.pid_exists(old_pid):
+                    app = QApplication(sys.argv)
+                    QMessageBox.warning(
+                        None,
+                        "Ninja Shield Already Running",
+                        "Ninja Shield is already running.\nCheck your taskbar."
+                    )
+                    sys.exit(0)
+                else:
+                    # 🔥 OLD PID DEAD → REMOVE STALE LOCK
+                    os.remove(lock_file)
+            except:
+                # 🔥 CORRUPT LOCK FILE → REMOVE IT
+                try:
+                    os.remove(lock_file)
+                except:
+                    pass
     except Exception:
         pass
 
     # Write current PID to lock file
     with open(lock_file, 'w') as f:
         f.write(str(os.getpid()))
-    atexit.register(lambda: os.remove(lock_file) if os.path.exists(lock_file) else None)
+    def remove_lock():
+        try:
+            if os.path.exists(lock_file):
+                os.remove(lock_file)
+        except:
+            pass
+
+    atexit.register(remove_lock)
 
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(resource_path("icon.ico")))
