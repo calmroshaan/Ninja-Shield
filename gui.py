@@ -1373,6 +1373,18 @@ class MainWindow(QMainWindow):
         h_layout.addWidget(logo_label)
         h_layout.addStretch()
 
+        # License days remaining badge
+        self.license_badge = QLabel("")
+        self.license_badge.setStyleSheet(
+            "background: #1a1b2a; border: 1px solid #2a2b3d; border-radius: 5px;"
+            "color: #4ade80; font-size: 11px; font-family: 'Consolas', monospace;"
+            "padding: 3px 10px;"
+        )
+        self._refresh_license_badge()
+        h_layout.addWidget(self.license_badge)
+
+        h_layout.addSpacing(10)
+
         version_label = QLabel("v4.0")
         version_label.setStyleSheet("color: #2a2b3d; font-size: 11px; font-family: 'Consolas', monospace;")
         h_layout.addWidget(version_label)
@@ -1398,6 +1410,34 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self._set_status("Ready")
+
+    def _refresh_license_badge(self):
+        """Update the license days-remaining badge in the header."""
+        try:
+            result = check_license()
+            if result["status"] == "active":
+                days = result["days_left"]
+                if days <= 5:
+                    color = "#f87171"    # red — nearly expired
+                elif days <= 15:
+                    color = "#f59e0b"    # amber — warning
+                else:
+                    color = "#4ade80"    # green — healthy
+                self.license_badge.setStyleSheet(
+                    f"background: #1a1b2a; border: 1px solid #2a2b3d; border-radius: 5px;"
+                    f"color: {color}; font-size: 11px; font-family: 'Consolas', monospace;"
+                    f"padding: 3px 10px;"
+                )
+                self.license_badge.setText(f"🔑  {days} days left")
+            else:
+                self.license_badge.setStyleSheet(
+                    "background: #1f0a0a; border: 1px solid #3f1e1e; border-radius: 5px;"
+                    "color: #f87171; font-size: 11px; font-family: 'Consolas', monospace;"
+                    "padding: 3px 10px;"
+                )
+                self.license_badge.setText("🔑  License expired")
+        except Exception:
+            self.license_badge.setText("")
 
     def _set_status(self, msg):
         self.status_bar.showMessage(f"  {msg}", 8000)

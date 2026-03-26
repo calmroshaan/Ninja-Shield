@@ -28,16 +28,30 @@ def get_hardware_id() -> str:
     """Generate a unique Hardware ID from this machine."""
     parts = []
 
+    # Garbage values that wmic returns on many OEM machines or after
+    # Windows updates — excluding these keeps the hardware ID stable.
+    GARBAGE_VALUES = {
+        "", "to be filled by o.e.m.", "default string", "none",
+        "not applicable", "unknown", "system serial number",
+        "chassis serial number", "to be filled by o.e.m",
+        "00000000", "0000000000000000",
+    }
+
+    def is_valid(val: str) -> bool:
+        return val.lower().strip() not in GARBAGE_VALUES and len(val.strip()) >= 4
+
     try:
         if platform.system() == "Windows":
-            # CPU info
+            # CPU ProcessorId
             result = subprocess.check_output(
                 "wmic cpu get ProcessorId /value",
                 shell=True, stderr=subprocess.DEVNULL
             ).decode(errors="ignore")
             for line in result.splitlines():
                 if "ProcessorId=" in line:
-                    parts.append(line.split("=")[1].strip())
+                    val = line.split("=", 1)[1].strip()
+                    if is_valid(val):
+                        parts.append("CPU:" + val)
 
             # Motherboard serial
             result = subprocess.check_output(
@@ -46,26 +60,38 @@ def get_hardware_id() -> str:
             ).decode(errors="ignore")
             for line in result.splitlines():
                 if "SerialNumber=" in line:
-                    parts.append(line.split("=")[1].strip())
+                    val = line.split("=", 1)[1].strip()
+                    if is_valid(val):
+                        parts.append("MB:" + val)
 
-            # Disk serial
+            # Disk serial — first valid one only
             result = subprocess.check_output(
                 "wmic diskdrive get SerialNumber /value",
                 shell=True, stderr=subprocess.DEVNULL
             ).decode(errors="ignore")
             for line in result.splitlines():
                 if "SerialNumber=" in line:
-                    val = line.split("=")[1].strip()
-                    if val:
-                        parts.append(val)
+                    val = line.split("=", 1)[1].strip()
+                    if is_valid(val):
+                        parts.append("DISK:" + val)
                         break
     except Exception:
         pass
 
-    # Fallback — always add machine node
-    parts.append(str(hex(uuid_getnode())))
+    # MAC address — always included as stable anchor
+    try:
+        import uuid as _uuid
+        mac = _uuid.getnode()
+        parts.append("MAC:" + str(hex(mac)))
+    except Exception:
+        pass
 
-    combined = "|".join(p for p in parts if p)
+    if not parts:
+        # Absolute last resort
+        parts.append("USER:" + os.environ.get("USERNAME", "unknown"))
+        parts.append("HOST:" + platform.node())
+
+    combined = "|".join(parts)
     return hashlib.sha256(combined.encode()).hexdigest()[:16].upper()
 
 
