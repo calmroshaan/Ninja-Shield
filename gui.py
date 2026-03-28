@@ -1,10 +1,53 @@
 """
-Ninja Shield - PyQt6 GUI
-Option 2: Tabbed Control Center
+Ninja Shield - PyQt6 GUI v4.1 (Camoufox Edition)
+Fixed: Replaced manual ZIP extraction with native Camoufox pkgman fetcher.
+Fixed: Updated cache clearing paths to target Firefox instead of Chromium.
+Updated: Proxy-first workflow. "VPN City" rebranded to "Location".
 """
-
 import sys
 import os
+import os
+import sys
+import re
+from urllib.parse import urlparse
+
+# --- SECURITY HELPERS ---
+_SAFE_PROFILE_NAME_RE = re.compile(r'^[a-zA-Z0-9_\-\.]{1,64}$')
+
+def _validate_profile_name(name: str) -> str:
+    name = name.strip()
+    if not name:
+        raise ValueError("Profile name cannot be empty.")
+    if not _SAFE_PROFILE_NAME_RE.match(name):
+        raise ValueError("Invalid name. Use only letters, numbers, underscores, or hyphens.")
+    return name
+
+def _parse_proxy_url(raw: str) -> dict:
+    raw = raw.strip()
+    if not raw: return None
+    if "://" not in raw: raw = f"http://{raw}"
+    try:
+        parsed = urlparse(raw)
+        host = parsed.hostname
+        port = parsed.port
+    except Exception:
+        raise ValueError("Malformed proxy URL. Please check the format.")
+    if not host or not port:
+        raise ValueError("Could not detect host or port. Use format: http://user:pass@ip:port")
+    return {
+        "protocol": parsed.scheme or "http",
+        "host": host,
+        "port": port,
+        "username": parsed.username or "",
+        "password": parsed.password or ""
+    }
+# ------------------------
+# -- FIX FOR PYINSTALLER WINDOWED MODE --
+# Prevents tqdm/Camoufox from crashing when printing a progress bar without a console.
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w")
 import json
 import subprocess
 import threading
@@ -17,19 +60,20 @@ from PyQt6.QtWidgets import (
     QFrame, QSplitter, QTextEdit, QFormLayout, QScrollArea, QGridLayout,
     QAbstractItemView, QStatusBar, QProgressDialog, QProgressBar
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize
-from PyQt6.QtGui import QFont, QColor, QPalette, QIcon
-
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize, QUrl
+from PyQt6.QtGui import QFont, QColor, QPalette, QIcon, QDesktopServices
 from fingerprint_engine import (
     generate_fingerprint, save_fingerprint, load_fingerprint,
     assign_vpn_city, list_profiles, get_timezone_for_city
 )
 from license_manager import check_license, activate_license
+
 def resource_path(relative_path):
     """Get absolute path to resource - works for dev and PyInstaller."""
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.abspath("."), relative_path)
+
 PROFILES_DIR = os.path.join(os.path.expanduser("~"), "NinjaShield", "profiles")
 os.makedirs(PROFILES_DIR, exist_ok=True)
 
@@ -42,204 +86,51 @@ QMainWindow, QWidget {
     font-size: 13px;
 }
 
-QTabWidget::pane {
-    border: none;
-    background: #12131a;
-}
+QTabWidget::pane { border: none; background: #12131a; }
+QTabBar { background: #0e0f16; }
+QTabBar::tab { background: #0e0f16; color: #4b5563; padding: 10px 22px; border: none; border-bottom: 2px solid transparent; font-size: 12px; font-weight: 600; }
+QTabBar::tab:selected { color: #a78bfa; border-bottom: 2px solid #7c3aed; background: #1a1b2a; }
+QTabBar::tab:hover:!selected { color: #9ca3af; background: #161720; }
 
-QTabBar {
-    background: #0e0f16;
-}
+QTableWidget { background: #12131a; border: none; gridline-color: #1e2033; color: #e5e7eb; font-size: 12px; selection-background-color: #1e1b3a; selection-color: #e5e7eb; outline: none; }
+QTableWidget::item { padding: 8px 10px; border-bottom: 1px solid #111521; }
+QTableWidget::item:selected { background: #1e1b3a; color: #e5e7eb; }
 
-QTabBar::tab {
-    background: #0e0f16;
-    color: #4b5563;
-    padding: 10px 22px;
-    border: none;
-    border-bottom: 2px solid transparent;
-    font-size: 12px;
-    font-weight: 600;
-}
+QHeaderView::section { background: #0e0f16; color: #4b5563; padding: 8px 10px; border: none; border-bottom: 1px solid #1e2033; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
 
-QTabBar::tab:selected {
-    color: #a78bfa;
-    border-bottom: 2px solid #7c3aed;
-    background: #1a1b2a;
-}
+QLineEdit { background: #1a1b2a; border: 1px solid #2a2b3d; border-radius: 6px; padding: 8px 12px; color: #e5e7eb; font-size: 12px; }
+QLineEdit:focus { border: 1px solid #7c3aed; }
+QLineEdit::placeholder { color: #4b5563; }
 
-QTabBar::tab:hover:!selected {
-    color: #9ca3af;
-    background: #161720;
-}
-
-QTableWidget {
-    background: #12131a;
-    border: none;
-    gridline-color: #1e2033;
-    color: #e5e7eb;
-    font-size: 12px;
-    selection-background-color: #1e1b3a;
-    selection-color: #e5e7eb;
-    outline: none;
-}
-
-QTableWidget::item {
-    padding: 8px 10px;
-    border-bottom: 1px solid #111521;
-}
-
-QTableWidget::item:selected {
-    background: #1e1b3a;
-    color: #e5e7eb;
-}
-
-QHeaderView::section {
-    background: #0e0f16;
-    color: #4b5563;
-    padding: 8px 10px;
-    border: none;
-    border-bottom: 1px solid #1e2033;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-QLineEdit {
-    background: #1a1b2a;
-    border: 1px solid #2a2b3d;
-    border-radius: 6px;
-    padding: 8px 12px;
-    color: #e5e7eb;
-    font-size: 12px;
-}
-
-QLineEdit:focus {
-    border: 1px solid #7c3aed;
-}
-
-QLineEdit::placeholder {
-    color: #4b5563;
-}
-
-QPushButton {
-    border-radius: 6px;
-    padding: 8px 16px;
-    font-size: 12px;
-    font-weight: 600;
-    border: none;
-}
-
-QPushButton#btnPrimary {
-    background: #7c3aed;
-    color: #fff;
-}
+QPushButton { border-radius: 6px; padding: 8px 16px; font-size: 12px; font-weight: 600; border: none; }
+QPushButton#btnPrimary { background: #7c3aed; color: #fff; }
 QPushButton#btnPrimary:hover { background: #6d28d9; }
 QPushButton#btnPrimary:pressed { background: #5b21b6; }
-
-QPushButton#btnGhost {
-    background: #1e2033;
-    color: #9ca3af;
-    border: 1px solid #2a2b3d;
-}
+QPushButton#btnGhost { background: #1e2033; color: #9ca3af; border: 1px solid #2a2b3d; }
 QPushButton#btnGhost:hover { background: #252640; color: #e5e7eb; }
-
-QPushButton#btnDanger {
-    background: #1f0a0a;
-    color: #f87171;
-    border: 1px solid #3f1e1e;
-}
+QPushButton#btnDanger { background: #1f0a0a; color: #f87171; border: 1px solid #3f1e1e; }
 QPushButton#btnDanger:hover { background: #2d0f0f; }
-
-QPushButton#btnGreen {
-    background: #052e16;
-    color: #4ade80;
-    border: 1px solid #14532d;
-}
+QPushButton#btnGreen { background: #052e16; color: #4ade80; border: 1px solid #14532d; }
 QPushButton#btnGreen:hover { background: #073a1c; }
+QPushButton:disabled { opacity: 0.4; }
 
-QPushButton:disabled {
-    opacity: 0.4;
-}
+QLabel#sectionTitle { font-size: 18px; font-weight: 800; color: #e5e7eb; }
+QLabel#subTitle { font-size: 12px; color: #4b5563; }
 
-QLabel#sectionTitle {
-    font-size: 18px;
-    font-weight: 800;
-    color: #e5e7eb;
-}
+QFrame#topBar { background: #0e0f16; border-bottom: 1px solid #1e2033; }
+QFrame#footerBar { background: #0e0f16; border-top: 1px solid #1e2033; }
 
-QLabel#subTitle {
-    font-size: 12px;
-    color: #4b5563;
-}
+QTextEdit { background: #0a0c10; border: 1px solid #1e2033; border-radius: 6px; color: #4ade80; font-family: 'Consolas', 'Courier New', monospace; font-size: 11px; padding: 8px; }
 
-QFrame#topBar {
-    background: #0e0f16;
-    border-bottom: 1px solid #1e2033;
-}
-
-QFrame#footerBar {
-    background: #0e0f16;
-    border-top: 1px solid #1e2033;
-}
-
-QFrame#statCard {
-    background: #0d1117;
-    border: 1px solid #1e2130;
-    border-radius: 8px;
-}
-
-QTextEdit {
-    background: #0a0c10;
-    border: 1px solid #1e2033;
-    border-radius: 6px;
-    color: #4ade80;
-    font-family: 'Consolas', 'Courier New', monospace;
-    font-size: 11px;
-    padding: 8px;
-}
-
-QScrollBar:vertical {
-    background: #0e0f16;
-    width: 6px;
-    border-radius: 3px;
-}
-QScrollBar::handle:vertical {
-    background: #2a2b3d;
-    border-radius: 3px;
-    min-height: 20px;
-}
+QScrollBar:vertical { background: #0e0f16; width: 6px; border-radius: 3px; }
+QScrollBar::handle:vertical { background: #2a2b3d; border-radius: 3px; min-height: 20px; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
 
-QStatusBar {
-    background: #0a0b10;
-    color: #4b5563;
-    font-size: 11px;
-    border-top: 1px solid #1e2033;
-}
-
-QDialog {
-    background: #12131a;
-}
-
-QFormLayout QLabel {
-    color: #9ca3af;
-    font-size: 12px;
-}
-
-QProgressDialog {
-    background: #12131a;
-    color: #e5e7eb;
-}
-
-QMessageBox {
-    background: #12131a;
-    color: #e5e7eb;
-}
-
-QMessageBox QPushButton {
-    min-width: 80px;
-}
+QStatusBar { background: #0a0b10; color: #4b5563; font-size: 11px; border-top: 1px solid #1e2033; }
+QDialog { background: #12131a; }
+QFormLayout QLabel { color: #9ca3af; font-size: 12px; }
+QMessageBox { background: #12131a; color: #e5e7eb; }
+QMessageBox QPushButton { min-width: 80px; }
 """
 
 # ─── Activation Window ───────────────────────────────────────────────────────
@@ -260,49 +151,29 @@ class ActivationWindow(QWidget):
         layout.setContentsMargins(40, 36, 40, 36)
         layout.setSpacing(0)
 
-        # Logo
         logo = QLabel("◈  Ninja Shield")
         logo.setStyleSheet("font-size: 18px; font-weight: 800; color: #a78bfa;")
         layout.addWidget(logo)
 
         layout.addSpacing(6)
-
         sub = QLabel("License Activation")
         sub.setStyleSheet("font-size: 12px; color: #4b5563;")
         layout.addWidget(sub)
 
         layout.addSpacing(28)
-
-        # Key input label
         key_label = QLabel("Enter your license key:")
         key_label.setStyleSheet("font-size: 12px; color: #9ca3af;")
         layout.addWidget(key_label)
 
         layout.addSpacing(8)
-
-        # Key input
         self.key_input = QLineEdit()
         self.key_input.setPlaceholderText("FBPM-XXXX-XXXX-XXXX-XXXX")
         self.key_input.setFixedHeight(40)
-        self.key_input.setStyleSheet("""
-            QLineEdit {
-                background: #1a1b2a;
-                border: 1px solid #2a2b3d;
-                border-radius: 6px;
-                padding: 8px 14px;
-                color: #e5e7eb;
-                font-size: 13px;
-                font-family: 'Consolas', monospace;
-                letter-spacing: 1px;
-            }
-            QLineEdit:focus { border: 1px solid #7c3aed; }
-        """)
+        self.key_input.setStyleSheet("QLineEdit { font-family: 'Consolas', monospace; letter-spacing: 1px; }")
         self.key_input.returnPressed.connect(self._activate)
         layout.addWidget(self.key_input)
 
         layout.addSpacing(12)
-
-        # Activate button
         self.activate_btn = QPushButton("Activate License")
         self.activate_btn.setObjectName("btnPrimary")
         self.activate_btn.setFixedHeight(40)
@@ -310,8 +181,6 @@ class ActivationWindow(QWidget):
         layout.addWidget(self.activate_btn)
 
         layout.addSpacing(16)
-
-        # Status label
         self.status_label = QLabel("")
         self.status_label.setStyleSheet("font-size: 11px; color: #4b5563;")
         self.status_label.setWordWrap(True)
@@ -319,31 +188,21 @@ class ActivationWindow(QWidget):
         layout.addWidget(self.status_label)
 
         layout.addStretch()
-
-        # Footer
         footer = QLabel("Each license is valid for one device only.")
         footer.setStyleSheet("font-size: 10px; color: #2a2b3d;")
         footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(footer)
 
     def _check_existing(self):
-        """Check if machine already has a valid license on startup."""
         result = check_license()
         if result["status"] == "active":
             self.activated.emit()
         elif result["status"] == "expired":
             self.status_label.setStyleSheet("font-size: 11px; color: #f87171;")
-            self.status_label.setText(
-                f"⚠  Your license expired on "
-                f"{result['expiry'].strftime('%B %d, %Y')}. "
-                f"Please enter a new key to continue."
-            )
-        elif result["status"] == "tampered":
+            self.status_label.setText(f"⚠  Your license expired on {result['expiry'].strftime('%B %d, %Y')}. Please enter a new key to continue.")
+        elif result["status"] in ["tampered", "wrong_machine"]:
             self.status_label.setStyleSheet("font-size: 11px; color: #f87171;")
-            self.status_label.setText("⚠  License file tampered. Please re-enter your key.")
-        elif result["status"] == "wrong_machine":
-            self.status_label.setStyleSheet("font-size: 11px; color: #f87171;")
-            self.status_label.setText("⚠  This license belongs to a different machine.")
+            self.status_label.setText("⚠  License invalid or belongs to another machine.")
 
     def _activate(self):
         key = self.key_input.text().strip()
@@ -360,20 +219,17 @@ class ActivationWindow(QWidget):
 
         if result["success"]:
             self.status_label.setStyleSheet("font-size: 11px; color: #4ade80;")
-            self.status_label.setText(
-                f"✓ Activated! Valid until "
-                f"{result['expiry'].strftime('%B %d, %Y')} "
-                f"({result['days_left']} days remaining)"
-            )
+            self.status_label.setText(f"✓ Activated! Valid until {result['expiry'].strftime('%B %d, %Y')} ({result['days_left']} days remaining)")
             QTimer.singleShot(1500, self.activated.emit)
         else:
             self.status_label.setStyleSheet("font-size: 11px; color: #f87171;")
             self.status_label.setText(f"✕  {result['error']}")
             self.activate_btn.setEnabled(True)
             self.activate_btn.setText("Activate License")
+
 # ─── Worker Thread for timezone lookup ───────────────────────────────────────
 class TimezoneWorker(QThread):
-    result = pyqtSignal(str, str)  # timezone, city
+    result = pyqtSignal(str, str)
     error  = pyqtSignal(str)
 
     def __init__(self, city):
@@ -398,31 +254,15 @@ class LaunchWorker(QThread):
         self.profile_name = profile_name
 
     def run(self):
+        import asyncio
         self.log.emit(f"Launching {self.profile_name}...")
         try:
             from browser_launcher import launch_browser
-            import asyncio
-            import traceback
-            import sys
-
-            if sys.platform == "win32":
-                asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(launch_browser(self.profile_name, profiles_dir=PROFILES_DIR))
-            finally:
-                loop.close()
+            asyncio.run(launch_browser(self.profile_name, profiles_dir=PROFILES_DIR))
         except Exception as e:
-            error_details = traceback.format_exc()
-            self.log.emit(f"[ERROR] {e}")
-            self.log.emit(f"[DETAILS] {error_details}")
-            log_path = os.path.join(os.path.expanduser("~"), "NinjaShield", "error.log")
-            with open(log_path, "w") as f:
-                f.write(error_details)
-            self.log.emit(f"[LOG SAVED] {log_path}")
-        self.done.emit()
+            self.log.emit(f"[ERROR] {str(e)}")
+        finally:
+            self.done.emit()
 # ─── Create Profile Dialog ────────────────────────────────────────────────────
 class CreateProfileDialog(QDialog):
     def __init__(self, parent=None):
@@ -443,23 +283,15 @@ class CreateProfileDialog(QDialog):
         title.setObjectName("sectionTitle")
         layout.addWidget(title)
 
-        sub = QLabel("Profile name and VPN city (optional)")
-        sub.setObjectName("subTitle")
-        layout.addWidget(sub)
-
-        # Profile name
         form = QFormLayout()
         form.setSpacing(12)
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-
         self.name_input = QLineEdit()
         self.name_input.setPlaceholderText("e.g. fb_account_01")
         form.addRow("Profile Name:", self.name_input)
 
-        # VPN city
         city_row = QHBoxLayout()
         self.city_input = QLineEdit()
-        self.city_input.setPlaceholderText("e.g. Dubai, UAE  (leave blank = no VPN)")
+        self.city_input.setPlaceholderText("e.g. London, UK  (leave blank = local)")
         self.city_input.textChanged.connect(self._on_city_changed)
         city_row.addWidget(self.city_input)
 
@@ -471,26 +303,21 @@ class CreateProfileDialog(QDialog):
 
         city_widget = QWidget()
         city_widget.setLayout(city_row)
-        form.addRow("VPN City:", city_widget)
-
+        form.addRow("Location:", city_widget)
         layout.addLayout(form)
 
-        # Timezone status label
         self.tz_label = QLabel("Timezone: (auto-detected after lookup)")
         self.tz_label.setStyleSheet("color: #4b5563; font-size: 11px; font-family: 'Consolas', monospace;")
         layout.addWidget(self.tz_label)
 
-        # Buttons
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         cancel_btn = QPushButton("Cancel")
         cancel_btn.setObjectName("btnGhost")
         cancel_btn.clicked.connect(self.reject)
-
         self.create_btn = QPushButton("Create Profile")
         self.create_btn.setObjectName("btnPrimary")
         self.create_btn.clicked.connect(self._on_create)
-
         btn_row.addWidget(cancel_btn)
         btn_row.addWidget(self.create_btn)
         layout.addLayout(btn_row)
@@ -503,14 +330,11 @@ class CreateProfileDialog(QDialog):
     def _lookup_timezone(self):
         city = self.city_input.text().strip()
         if not city:
-            self.tz_label.setText("Timezone: No city entered")
             return
 
-        self.lookup_btn.setText("...")
         self.lookup_btn.setEnabled(False)
         self.tz_label.setText("Looking up timezone...")
         self.tz_label.setStyleSheet("color: #f59e0b; font-size: 11px;")
-
         self.tz_worker = TimezoneWorker(city)
         self.tz_worker.result.connect(self._on_timezone_found)
         self.tz_worker.error.connect(self._on_timezone_error)
@@ -520,16 +344,29 @@ class CreateProfileDialog(QDialog):
         self.timezone_result = tz
         self.tz_label.setText(f"✓ Timezone: {tz}")
         self.tz_label.setStyleSheet("color: #4ade80; font-size: 11px; font-family: 'Consolas', monospace;")
-        self.lookup_btn.setText("Lookup")
         self.lookup_btn.setEnabled(True)
 
     def _on_timezone_error(self, err):
         self.tz_label.setText(f"⚠ Lookup failed — will use fallback timezone")
         self.tz_label.setStyleSheet("color: #f87171; font-size: 11px;")
-        self.lookup_btn.setText("Lookup")
         self.lookup_btn.setEnabled(True)
 
     def _on_create(self):
+        raw_name = self.name_input.text()
+        try:
+            name = _validate_profile_name(raw_name)
+        except ValueError as e:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Invalid Name", str(e))
+            return
+            
+        path = os.path.join(PROFILES_DIR, f"{name}.json")
+        if os.path.exists(path):
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Error", f"Profile '{name}' already exists.")
+            return
+            
+        self.accept()
         name = self.name_input.text().strip()
         if not name:
             QMessageBox.warning(self, "Error", "Profile name cannot be empty.")
@@ -541,18 +378,14 @@ class CreateProfileDialog(QDialog):
         self.accept()
 
     def get_data(self):
-        return {
-            "name": self.name_input.text().strip(),
-            "city": self.city_input.text().strip() or "No VPN (Local)",
-            "timezone": self.timezone_result
-        }
+        return {"name": self.name_input.text().strip(), "city": self.city_input.text().strip() or "No VPN (Local)", "timezone": self.timezone_result}
 
 
 # ─── Edit VPN Dialog ─────────────────────────────────────────────────────────
 class EditVPNDialog(QDialog):
     def __init__(self, profile_name, current_city, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(f"Assign VPN — {profile_name}")
+        self.setWindowTitle(f"Assign Location — {profile_name}")
         self.setMinimumWidth(400)
         self.setStyleSheet(STYLE)
         self.tz_worker = None
@@ -564,13 +397,9 @@ class EditVPNDialog(QDialog):
         layout.setSpacing(14)
         layout.setContentsMargins(24, 24, 24, 24)
 
-        title = QLabel(f"Assign VPN City")
+        title = QLabel(f"Assign Profile Location")
         title.setObjectName("sectionTitle")
         layout.addWidget(title)
-
-        sub = QLabel(f"Profile: {profile_name}")
-        sub.setObjectName("subTitle")
-        layout.addWidget(sub)
 
         city_row = QHBoxLayout()
         self.city_input = QLineEdit()
@@ -584,7 +413,6 @@ class EditVPNDialog(QDialog):
         self.lookup_btn.setFixedWidth(75)
         self.lookup_btn.clicked.connect(self._lookup_timezone)
         city_row.addWidget(self.lookup_btn)
-
         layout.addLayout(city_row)
 
         self.tz_label = QLabel("Timezone: auto-detected on lookup")
@@ -610,9 +438,7 @@ class EditVPNDialog(QDialog):
 
     def _lookup_timezone(self):
         city = self.city_input.text().strip()
-        if not city:
-            return
-        self.lookup_btn.setText("...")
+        if not city: return
         self.lookup_btn.setEnabled(False)
         self.tz_label.setText("Looking up...")
         self.tz_label.setStyleSheet("color: #f59e0b; font-size: 11px;")
@@ -625,18 +451,15 @@ class EditVPNDialog(QDialog):
         self.timezone_result = tz
         self.tz_label.setText(f"✓ Timezone: {tz}")
         self.tz_label.setStyleSheet("color: #4ade80; font-size: 11px; font-family: 'Consolas', monospace;")
-        self.lookup_btn.setText("Lookup")
         self.lookup_btn.setEnabled(True)
 
     def _on_tz_err(self):
         self.tz_label.setText("⚠ Lookup failed — fallback timezone will be used")
         self.tz_label.setStyleSheet("color: #f87171; font-size: 11px;")
-        self.lookup_btn.setText("Lookup")
         self.lookup_btn.setEnabled(True)
 
     def get_data(self):
-        city = self.city_input.text().strip() or "No VPN (Local)"
-        return {"city": city, "timezone": self.timezone_result}
+        return {"city": self.city_input.text().strip() or "No VPN (Local)", "timezone": self.timezone_result}
 
 
 # ─── Proxy Dialog ─────────────────────────────────────────────────────────────
@@ -657,14 +480,20 @@ class ProxyDialog(QDialog):
         title.setObjectName("sectionTitle")
         layout.addWidget(title)
 
-        hint = QLabel(
-            "Formats:\n"
-            "  http://host:port\n"
-            "  http://user:pass@host:port\n"
-            "  socks5://user:pass@host:port"
-        )
+        hint = QLabel("Formats:\n  http://host:port\n  http://user:pass@host:port\n  socks5://user:pass@host:port")
         hint.setStyleSheet("color: #4b5563; font-size: 11px; font-family: 'Consolas', monospace;")
         layout.addWidget(hint)
+
+        # -- Affiliate Referral Button --
+        buy_btn = QPushButton("🛒 Buy Recommended Proxies (Proxy-Cheap)")
+        buy_btn.setObjectName("btnGhost")
+        # Custom styling to make it pop slightly without breaking your dark theme
+        buy_btn.setStyleSheet("color: #a78bfa; border: 1px solid #4c1d95; text-align: left; padding-left: 12px;")
+        buy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        buy_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://app.proxy-cheap.com/r/OuBVeq")))
+        layout.addWidget(buy_btn)
+        
+        layout.addSpacing(6)
 
         self.proxy_input = QLineEdit()
         self.proxy_input.setPlaceholderText("http://user:pass@host:port")
@@ -674,10 +503,7 @@ class ProxyDialog(QDialog):
             pw    = current_proxy.get("password", "")
             host  = current_proxy.get("host", "")
             port  = current_proxy.get("port", 80)
-            if user:
-                self.proxy_input.setText(f"{proto}://{user}:{pw}@{host}:{port}")
-            else:
-                self.proxy_input.setText(f"{proto}://{host}:{port}")
+            self.proxy_input.setText(f"{proto}://{user}:{pw}@{host}:{port}" if user else f"{proto}://{host}:{port}")
         layout.addWidget(self.proxy_input)
 
         btn_row = QHBoxLayout()
@@ -710,30 +536,15 @@ class FingerprintDialog(QDialog):
         self.setWindowTitle(f"Fingerprint — {profile_name}")
         self.setMinimumSize(500, 500)
         self.setStyleSheet(STYLE)
-        self._build_ui(profile_name)
-
-    def _build_ui(self, profile_name):
+        
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(12)
-
-        title = QLabel(f"Fingerprint: {profile_name}")
-        title.setObjectName("sectionTitle")
-        layout.addWidget(title)
-
         fp = load_fingerprint(profile_name, PROFILES_DIR)
         text = QTextEdit()
         text.setReadOnly(True)
-
-        lines = []
-        skip = {"plugins", "fonts"}
-        for k, v in fp.items():
-            if k in skip:
-                continue
-            lines.append(f"{k:<28} {v}")
+        lines = [f"{k:<28} {v}" for k, v in fp.items() if k not in {"plugins", "fonts"}]
         text.setPlainText("\n".join(lines))
         layout.addWidget(text)
-
+        
         close_btn = QPushButton("Close")
         close_btn.setObjectName("btnGhost")
         close_btn.clicked.connect(self.accept)
@@ -751,37 +562,30 @@ class ProfilesTab(QWidget):
         self.refresh()
 
     def _build_ui(self):
-        self._workers = []
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Toolbar
         toolbar = QFrame()
         toolbar.setObjectName("topBar")
         toolbar.setFixedHeight(56)
         tbar_layout = QHBoxLayout(toolbar)
         tbar_layout.setContentsMargins(16, 0, 16, 0)
-        tbar_layout.setSpacing(10)
-
+        
         self.search = QLineEdit()
         self.search.setPlaceholderText("🔍  Search profiles...")
         self.search.textChanged.connect(self._filter)
-        self.search.setFixedHeight(34)
         tbar_layout.addWidget(self.search)
 
         new_btn = QPushButton("+ New Profile")
         new_btn.setObjectName("btnPrimary")
-        new_btn.setFixedHeight(34)
         new_btn.clicked.connect(self._create_profile)
         tbar_layout.addWidget(new_btn)
-
         layout.addWidget(toolbar)
 
-        # Table
         self.table = QTableWidget()
         self.table.setColumnCount(6)
-        self.table.setHorizontalHeaderLabels(["#", "Profile Name", "VPN City", "Timezone", "Screen", "Status"])
+        self.table.setHorizontalHeaderLabels(["#", "Profile Name", "Location", "Timezone", "Screen", "Status"])
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
@@ -791,77 +595,55 @@ class ProfilesTab(QWidget):
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.table.setShowGrid(False)
-        self.table.setAlternatingRowColors(False)
         layout.addWidget(self.table)
 
-        # Footer action bar
         footer = QFrame()
         footer.setObjectName("footerBar")
         footer.setFixedHeight(54)
         foot_layout = QHBoxLayout(footer)
         foot_layout.setContentsMargins(16, 0, 16, 0)
-        foot_layout.setSpacing(8)
 
         self.launch_btn = QPushButton("▶  Launch")
         self.launch_btn.setObjectName("btnGreen")
-        self.launch_btn.setFixedHeight(34)
         self.launch_btn.clicked.connect(self._launch_selected)
 
-        self.vpn_btn = QPushButton("✎  VPN City")
+        self.vpn_btn = QPushButton("✎  Location")
         self.vpn_btn.setObjectName("btnGhost")
-        self.vpn_btn.setFixedHeight(34)
         self.vpn_btn.clicked.connect(self._edit_vpn)
 
         self.proxy_btn = QPushButton("⇄  Proxy")
         self.proxy_btn.setObjectName("btnGhost")
-        self.proxy_btn.setFixedHeight(34)
         self.proxy_btn.clicked.connect(self._edit_proxy)
 
         self.fp_btn = QPushButton("🔍  Fingerprint")
         self.fp_btn.setObjectName("btnGhost")
-        self.fp_btn.setFixedHeight(34)
         self.fp_btn.clicked.connect(self._view_fp)
 
         self.regen_btn = QPushButton("↻  Regenerate")
         self.regen_btn.setObjectName("btnGhost")
-        self.regen_btn.setFixedHeight(34)
         self.regen_btn.clicked.connect(self._regen_fp)
 
         self.del_btn = QPushButton("✕  Delete")
         self.del_btn.setObjectName("btnDanger")
-        self.del_btn.setFixedHeight(34)
         self.del_btn.clicked.connect(self._delete_profile)
 
         self.clear_btn = QPushButton("🧹  Clear Cache")
         self.clear_btn.setObjectName("btnGhost")
-        self.clear_btn.setFixedHeight(34)
         self.clear_btn.clicked.connect(self._clear_selected_cache)
-
-        self.clear_all_btn = QPushButton("🧹  Clear All Cache")
-        self.clear_all_btn.setObjectName("btnGhost")
-        self.clear_all_btn.setFixedHeight(34)
-        self.clear_all_btn.clicked.connect(self._clear_all_cache)
 
         self.count_label = QLabel("")
         self.count_label.setStyleSheet("color: #4b5563; font-size: 11px;")
 
-        foot_layout.addWidget(self.launch_btn)
-        foot_layout.addWidget(self.vpn_btn)
-        foot_layout.addWidget(self.proxy_btn)
-        foot_layout.addWidget(self.fp_btn)
-        foot_layout.addWidget(self.regen_btn)
-        foot_layout.addWidget(self.del_btn)
-        foot_layout.addWidget(self.clear_btn)
-        foot_layout.addWidget(self.clear_all_btn)
+        for btn in [self.launch_btn, self.vpn_btn, self.proxy_btn, self.fp_btn, self.regen_btn, self.del_btn, self.clear_btn]:
+            foot_layout.addWidget(btn)
         foot_layout.addStretch()
         foot_layout.addWidget(self.count_label)
-
         layout.addWidget(footer)
 
     def refresh(self):
-        profiles = list_profiles(PROFILES_DIR)
+        # Sort profiles alphabetically (A-Z, case-insensitive)
+        profiles = sorted(list_profiles(PROFILES_DIR), key=lambda x: x.lower())
         self._populate(profiles)
 
     def _populate(self, profiles):
@@ -869,31 +651,24 @@ class ProfilesTab(QWidget):
         for i, name in enumerate(profiles):
             fp = load_fingerprint(name, PROFILES_DIR)
             self.table.insertRow(i)
-
             num_item = QTableWidgetItem(str(i + 1))
             num_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            num_item.setForeground(QColor("#4b5563"))
             self.table.setItem(i, 0, num_item)
-
-            name_item = QTableWidgetItem(name)
-            name_item.setForeground(QColor("#e5e7eb"))
-            self.table.setItem(i, 1, name_item)
-
+            
+            self.table.setItem(i, 1, QTableWidgetItem(name))
+            
             city = fp.get("vpn_city", "No VPN")
             flag = fp.get("vpn_flag", "🖥️")
-            city_item = QTableWidgetItem(f"{flag}  {city}")
-            city_item.setForeground(QColor("#9ca3af"))
-            city_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.table.setItem(i, 2, city_item)
-
+            loc_item = QTableWidgetItem(f"{flag}  {city}")
+            loc_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.table.setItem(i, 2, loc_item)
+            
             tz_item = QTableWidgetItem(fp.get("timezone", "—"))
-            tz_item.setForeground(QColor("#6b7280"))
             tz_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(i, 3, tz_item)
-
-            screen = f"{fp['screen_width']}×{fp['screen_height']}"
-            screen_item = QTableWidgetItem(screen)
-            screen_item.setForeground(QColor("#6b7280"))
+            
+            screen_item = QTableWidgetItem(f"{fp.get('screen_width', 1920)}×{fp.get('screen_height', 1080)}")
+            screen_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(i, 4, screen_item)
 
             has_proxy = bool(fp.get("proxy", {}).get("host"))
@@ -903,21 +678,18 @@ class ProfilesTab(QWidget):
             status_item.setForeground(QColor(color_map.get(status_text, "#4b5563")))
             status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(i, 5, status_item)
-
+            
             self.table.setRowHeight(i, 38)
-
         self.count_label.setText(f"{len(profiles)} profile{'s' if len(profiles) != 1 else ''}")
 
     def _filter(self, text):
-        profiles = list_profiles(PROFILES_DIR)
-        filtered = [p for p in profiles if text.lower() in p.lower()]
-        self._populate(filtered)
+        filtered = [p for p in list_profiles(PROFILES_DIR) if text.lower() in p.lower()]
+        # Sort the filtered results alphabetically
+        self._populate(sorted(filtered, key=lambda x: x.lower()))
 
     def _selected_name(self):
         row = self.table.currentRow()
-        if row < 0:
-            return None
-        return self.table.item(row, 1).text()
+        return self.table.item(row, 1).text() if row >= 0 else None
 
     def _create_profile(self):
         dlg = CreateProfileDialog(self)
@@ -927,19 +699,22 @@ class ProfilesTab(QWidget):
             fp = generate_fingerprint(data["name"], data["city"], data["timezone"])
             save_fingerprint(fp, PROFILES_DIR)
             self.refresh()
-            self.status_message.emit(f"✓ Profile '{data['name']}' created  |  VPN: {data['city']}")
+            self.status_message.emit(f"✓ Profile '{data['name']}' created  |  Location: {data['city']}")
 
     def _launch_selected(self):
         name = self._selected_name()
-        if not name:
+        if not name: 
             QMessageBox.information(self, "Select Profile", "Please select a profile to launch.")
             return
-        fp   = load_fingerprint(name, PROFILES_DIR)
+            
+        fp = load_fingerprint(name, PROFILES_DIR)
         city = fp.get("vpn_city", "No VPN (Local)")
-        if city != "No VPN (Local)" and not fp.get("proxy", {}).get("host"):
+        
+        # Smart Warning Check
+        if city not in ("No VPN (Local)", "No VPN", "Local", "") and not fp.get("proxy", {}).get("host"):
             reply = QMessageBox.question(
-                self, "VPN Required",
-                f"This profile requires VPN connected to:\n\n  {fp.get('vpn_flag','')}  {city}\n\nIs your VPN connected?",
+                self, "Manual Connection Required",
+                f"This profile is spoofing its location to:\n\n  {fp.get('vpn_flag','')}  {city}\n\nBut no Proxy is assigned. Did you connect your system VPN to this city?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
             if reply != QMessageBox.StandardButton.Yes:
@@ -948,174 +723,99 @@ class ProfilesTab(QWidget):
         self.status_message.emit(f"Launching {name}...")
         worker = LaunchWorker(name)
         worker.log.connect(lambda msg: self.status_message.emit(msg))
-        worker.done.connect(lambda: self.status_message.emit(f"✓ {name} browser closed"))
+        
+        def _on_done():
+            self.status_message.emit(f"✓ {name} browser closed")
+            try:
+                self._workers.remove(worker)
+            except ValueError:
+                pass
+            worker.deleteLater()
+            
+        worker.done.connect(_on_done)
         self._workers.append(worker)
         worker.start()
+        self.status_message.emit(f"Launching {name}...")
 
     def _edit_vpn(self):
         name = self._selected_name()
-        if not name:
-            QMessageBox.information(self, "Select Profile", "Please select a profile first.")
-            return
-        fp   = load_fingerprint(name, PROFILES_DIR)
-        dlg  = EditVPNDialog(name, fp.get("vpn_city", "No VPN (Local)"), self)
+        if not name: return
+        fp = load_fingerprint(name, PROFILES_DIR)
+        dlg = EditVPNDialog(name, fp.get("vpn_city", "No VPN (Local)"), self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             data = dlg.get_data()
-            city = data["city"]
-            self.status_message.emit(f"Updating VPN for '{name}'...")
-            if data["timezone"]:
-                fp2 = load_fingerprint(name, PROFILES_DIR)
-                from fingerprint_engine import _get_region_info
-                region = _get_region_info(city)
-                fp2["vpn_city"]  = city
-                fp2["vpn_flag"]  = region["flag"]
-                fp2["vpn_hint"]  = f"Connect VPN to {city}"
-                fp2["languages"] = region["languages"]
-                fp2["timezone"]  = data["timezone"]
-                save_fingerprint(fp2, PROFILES_DIR)
-            else:
-                assign_vpn_city(name, city, PROFILES_DIR)
+            assign_vpn_city(name, data["city"], PROFILES_DIR)
             self.refresh()
-            self.status_message.emit(f"✓ VPN updated for '{name}' → {city}")
 
     def _edit_proxy(self):
         name = self._selected_name()
-        if not name:
-            QMessageBox.information(self, "Select Profile", "Please select a profile first.")
-            return
-        fp  = load_fingerprint(name, PROFILES_DIR)
+        if not name: return
+        
+        fp = load_fingerprint(name, PROFILES_DIR)
         dlg = ProxyDialog(name, fp.get("proxy"), self)
         result = dlg.exec()
-
+        
         if result == QDialog.DialogCode.Accepted:
             raw = dlg.get_proxy_url()
             if raw:
-                from urllib.parse import urlparse
-                parsed = urlparse(raw if "://" in raw else f"http://{raw}")
-                fp["proxy"] = {
-                    "protocol": parsed.scheme or "http",
-                    "host":     parsed.hostname,
-                    "port":     parsed.port or 80,
-                    "username": parsed.username or "",
-                    "password": parsed.password or "",
-                }
-                save_fingerprint(fp, PROFILES_DIR)
-                self.refresh()
-                self.status_message.emit(f"✓ Proxy assigned to '{name}'")
-        elif result == 2:  # Remove
-            if "proxy" in fp:
-                del fp["proxy"]
-                save_fingerprint(fp, PROFILES_DIR)
+                try:
+                    fp["proxy"] = _parse_proxy_url(raw)
+                    save_fingerprint(fp, PROFILES_DIR)
+                    self.refresh()
+                except ValueError as e:
+                    from PyQt6.QtWidgets import QMessageBox
+                    QMessageBox.warning(self, "Invalid Proxy", str(e))
+        elif result == 2:  # Clear Proxy
+            fp.pop("proxy", None)
+            save_fingerprint(fp, PROFILES_DIR)
             self.refresh()
-            self.status_message.emit(f"✓ Proxy removed from '{name}'")
-
     def _view_fp(self):
         name = self._selected_name()
-        if not name:
-            QMessageBox.information(self, "Select Profile", "Please select a profile first.")
-            return
-        FingerprintDialog(name, self).exec()
+        if name: FingerprintDialog(name, self).exec()
 
     def _regen_fp(self):
         name = self._selected_name()
-        if not name:
-            QMessageBox.information(self, "Select Profile", "Please select a profile first.")
-            return
+        if not name: return
         import random as _r
-        fp      = load_fingerprint(name, PROFILES_DIR)
-        old_city = fp.get("vpn_city", "No VPN (Local)")
-        old_tz   = fp.get("timezone")
-        seed_name = f"{name}_{_r.randint(100,999)}"
-        new_fp    = generate_fingerprint(seed_name, old_city, old_tz)
+        fp = load_fingerprint(name, PROFILES_DIR)
+        new_fp = generate_fingerprint(f"{name}_{_r.randint(100,999)}", fp.get("vpn_city", "No VPN (Local)"), fp.get("timezone"))
         new_fp["profile_name"] = name
         save_fingerprint(new_fp, PROFILES_DIR)
         self.refresh()
-        self.status_message.emit(f"✓ Fingerprint regenerated for '{name}'")
 
     def _clear_selected_cache(self):
         name = self._selected_name()
-        if not name:
-            QMessageBox.information(self, "Select Profile", "Please select a profile first.")
-            return
+        if not name: return
         browser_data = os.path.join(PROFILES_DIR, f"browser_data_{name}")
-        if not os.path.exists(browser_data):
-            self.status_message.emit(f"No browser data found for '{name}'")
-            return
-        cache_folders = ["Cache", "Code Cache", "GPUCache", "DawnCache", "ShaderCache"]
+        # Updated specifically for Firefox/Camoufox engine caches
+        cache_folders = ["cache2", "startupCache", "shader-cache", "datareporting"]
         freed = 0
         for folder in cache_folders:
             path = os.path.join(browser_data, folder)
             if os.path.exists(path):
+                import shutil
                 for dirpath, dirnames, filenames in os.walk(path):
                     for f in filenames:
                         try:
                             fp = os.path.join(dirpath, f)
                             freed += os.path.getsize(fp)
                             os.remove(fp)
-                        except Exception:
-                            pass
-                try:
-                    import shutil
-                    shutil.rmtree(path)
-                except Exception:
-                    pass
-        freed_mb = round(freed / (1024 * 1024), 2)
-        self.status_message.emit(f"✓ Cache cleared for '{name}' — {freed_mb} MB freed")
-
-    def _clear_all_cache(self):
-        reply = QMessageBox.question(
-            self, "Clear All Cache",
-            "Clear cache for ALL profiles?\n\nLogin sessions will be kept safe.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-        profiles = list_profiles(PROFILES_DIR)
-        cache_folders = ["Cache", "Code Cache", "GPUCache", "DawnCache", "ShaderCache"]
-        total_freed = 0
-        for name in profiles:
-            browser_data = os.path.join(PROFILES_DIR, f"browser_data_{name}")
-            if not os.path.exists(browser_data):
-                continue
-            for folder in cache_folders:
-                path = os.path.join(browser_data, folder)
-                if os.path.exists(path):
-                    for dirpath, dirnames, filenames in os.walk(path):
-                        for f in filenames:
-                            try:
-                                fp = os.path.join(dirpath, f)
-                                total_freed += os.path.getsize(fp)
-                                os.remove(fp)
-                            except Exception:
-                                pass
-                    try:
-                        import shutil
-                        shutil.rmtree(path)
-                    except Exception:
-                        pass
-        freed_mb = round(total_freed / (1024 * 1024), 2)
-        self.status_message.emit(f"✓ All cache cleared — {freed_mb} MB freed across {len(profiles)} profiles")
+                        except: pass
+                try: shutil.rmtree(path)
+                except: pass
+        self.status_message.emit(f"✓ Firefox cache cleared for '{name}' — {round(freed / 1048576, 2)} MB freed")
 
     def _delete_profile(self):
         name = self._selected_name()
-        if not name:
-            QMessageBox.information(self, "Select Profile", "Please select a profile first.")
-            return
-        reply = QMessageBox.question(
-            self, "Delete Profile",
-            f"Delete '{name}' and all browser data?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
+        if not name: return
+        reply = QMessageBox.question(self, "Delete Profile", f"Delete '{name}' and all browser data?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
             import shutil
             json_path = os.path.join(PROFILES_DIR, f"{name}.json")
-            if os.path.exists(json_path):
-                os.remove(json_path)
+            if os.path.exists(json_path): os.remove(json_path)
             browser_data = os.path.join(PROFILES_DIR, f"browser_data_{name}")
-            if os.path.exists(browser_data):
-                shutil.rmtree(browser_data)
+            if os.path.exists(browser_data): shutil.rmtree(browser_data)
             self.refresh()
-            self.status_message.emit(f"✓ Deleted '{name}'")
 
 
 # ─── Launch Tab ───────────────────────────────────────────────────────────────
@@ -1130,21 +830,14 @@ class LaunchTab(QWidget):
     def _build_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(16)
-
+        
         title = QLabel("Launch Profile")
         title.setObjectName("sectionTitle")
         layout.addWidget(title)
 
-        sub = QLabel("Select a profile and launch its browser session")
-        sub.setObjectName("subTitle")
-        layout.addWidget(sub)
-
-        # Profile selector
         row = QHBoxLayout()
         self.profile_combo = QLineEdit()
         self.profile_combo.setPlaceholderText("Type or select profile name...")
-        self.profile_combo.setFixedHeight(36)
         row.addWidget(self.profile_combo)
 
         refresh_btn = QPushButton("↻")
@@ -1152,13 +845,11 @@ class LaunchTab(QWidget):
         refresh_btn.setFixedSize(36, 36)
         refresh_btn.clicked.connect(self._refresh_list)
         row.addWidget(refresh_btn)
-
         layout.addLayout(row)
 
-        # Profile quick-select list
         self.profile_list = QTableWidget()
         self.profile_list.setColumnCount(3)
-        self.profile_list.setHorizontalHeaderLabels(["Profile", "VPN City", "Timezone"])
+        self.profile_list.setHorizontalHeaderLabels(["Profile", "Location", "Timezone"])
         self.profile_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.profile_list.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.profile_list.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
@@ -1166,61 +857,50 @@ class LaunchTab(QWidget):
         self.profile_list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.profile_list.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.profile_list.setShowGrid(False)
-        self.profile_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.profile_list.clicked.connect(self._on_list_click)
+        self.profile_list.clicked.connect(lambda idx: self.profile_combo.setText(self.profile_list.item(idx.row(), 0).text()))
         layout.addWidget(self.profile_list)
 
         launch_btn = QPushButton("▶  Launch Selected Profile")
         launch_btn.setObjectName("btnGreen")
-        launch_btn.setFixedHeight(40)
         launch_btn.clicked.connect(self._launch)
         layout.addWidget(launch_btn)
-
-        # Log output
-        log_label = QLabel("Launch Log")
-        log_label.setStyleSheet("color: #4b5563; font-size: 11px; font-weight: 700; text-transform: uppercase;")
-        layout.addWidget(log_label)
 
         self.log = QTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumHeight(160)
         layout.addWidget(self.log)
-
         self._refresh_list()
 
     def _refresh_list(self):
-        profiles = list_profiles(PROFILES_DIR)
         self.profile_list.setRowCount(0)
+        # Sort profiles alphabetically for the launch tab
+        profiles = sorted(list_profiles(PROFILES_DIR), key=lambda x: x.lower())
         for i, name in enumerate(profiles):
             fp = load_fingerprint(name, PROFILES_DIR)
             self.profile_list.insertRow(i)
             self.profile_list.setItem(i, 0, QTableWidgetItem(name))
-            city = fp.get("vpn_city", "No VPN")
-            flag = fp.get("vpn_flag", "🖥️")
-            self.profile_list.setItem(i, 1, QTableWidgetItem(f"{flag}  {city}"))
+            self.profile_list.setItem(i, 1, QTableWidgetItem(f"{fp.get('vpn_flag', '🖥️')}  {fp.get('vpn_city', 'No VPN')}"))
             self.profile_list.setItem(i, 2, QTableWidgetItem(fp.get("timezone", "—")))
-            self.profile_list.setRowHeight(i, 36)
-
-    def _on_list_click(self, index):
-        name = self.profile_list.item(index.row(), 0).text()
-        self.profile_combo.setText(name)
 
     def _launch(self):
         name = self.profile_combo.text().strip()
-        if not name:
+        if not name: 
             QMessageBox.information(self, "Select Profile", "Enter or select a profile name.")
             return
+            
         profiles = list_profiles(PROFILES_DIR)
         if name not in profiles:
             QMessageBox.warning(self, "Not Found", f"Profile '{name}' not found.")
             return
 
-        fp   = load_fingerprint(name, PROFILES_DIR)
+        fp = load_fingerprint(name, PROFILES_DIR)
         city = fp.get("vpn_city", "No VPN (Local)")
-        if city != "No VPN (Local)" and not fp.get("proxy", {}).get("host"):
+        
+        # Smart Warning Check
+        if city not in ("No VPN (Local)", "No VPN", "Local", "") and not fp.get("proxy", {}).get("host"):
             reply = QMessageBox.question(
-                self, "VPN Required",
-                f"Connect VPN to:\n\n  {fp.get('vpn_flag','')}  {city}\n\nReady?",
+                self, "Manual Connection Required",
+                f"This profile is spoofing its location to:\n\n  {fp.get('vpn_flag','')}  {city}\n\nBut no Proxy is assigned. Did you connect your system VPN to this city?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
             if reply != QMessageBox.StandardButton.Yes:
@@ -1232,28 +912,26 @@ class LaunchTab(QWidget):
         worker.done.connect(lambda: self.log.append(f"[{name}] Browser closed."))
         self._workers.append(worker)
         worker.start()
-        
 
-# ─── Camoufox Setup Dialog ────────────────────────────────────────────────────
+
+# ─── Native Camoufox Setup Worker ─────────────────────────────────────────────
 class CamoufoxDownloadWorker(QThread):
     progress_text    = pyqtSignal(str)
-    progress_percent = pyqtSignal(int)   # 0–100
-    finished         = pyqtSignal(bool, str)  # success, error_message
+    progress_percent = pyqtSignal(int)
+    finished         = pyqtSignal(bool, str)
 
     def run(self):
         try:
-            import requests, tempfile, shlex, os, zipfile
+            import requests, tempfile, os, zipfile, shlex
             from camoufox.pkgman import CamoufoxFetcher, INSTALL_DIR, OS_NAME
 
             self.progress_text.emit("Fetching latest Camoufox release info...")
             fetcher = CamoufoxFetcher()
             url = fetcher.url
 
-            # Clean up old install
+            # Clean up old install attempts
             fetcher.cleanup()
             INSTALL_DIR.mkdir(parents=True, exist_ok=True)
-
-            self.progress_text.emit("Downloading Camoufox browser engine (~530 MB)...")
 
             tmp_path = os.path.join(tempfile.gettempdir(), "camoufox_download.zip")
             downloaded = 0
@@ -1276,25 +954,25 @@ class CamoufoxDownloadWorker(QThread):
                                     f"Downloading... {mb_done:.0f} MB / {mb_total:.0f} MB ({pct}%)"
                                 )
 
-            self.progress_text.emit("Extracting Camoufox...")
+            self.progress_text.emit("Extracting Camoufox engine...")
             self.progress_percent.emit(99)
 
-            # Extract directly from disk file — never load 530MB into RAM
+            # Extract directly from disk file to save RAM
             with zipfile.ZipFile(tmp_path, "r") as zf:
                 zf.extractall(str(INSTALL_DIR))
 
             os.unlink(tmp_path)
-
             fetcher.set_version()
 
             if OS_NAME != "win":
-                os.system(f"chmod -R 755 {shlex.quote(str(INSTALL_DIR))}")  # nosec
+                os.system(f"chmod -R 755 {shlex.quote(str(INSTALL_DIR))}")
 
             self.progress_percent.emit(100)
             self.finished.emit(True, "")
         except Exception as e:
             import traceback
             self.finished.emit(False, f"{e}\n{traceback.format_exc()}")
+
 class CamoufoxSetupDialog(QDialog):
     setup_complete = pyqtSignal()
 
@@ -1309,24 +987,18 @@ class CamoufoxSetupDialog(QDialog):
     def _build_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 30, 30, 30)
-        layout.setSpacing(16)
-
+        
         title = QLabel("Browser Engine Required")
         title.setStyleSheet("font-size: 16px; font-weight: 800; color: #a78bfa;")
         layout.addWidget(title)
 
-        desc = QLabel(
-            "Ninja Shield uses Camoufox — a privacy-hardened Firefox engine.\n"
-            "It needs to be downloaded once (~530 MB).\n\n"
-            "This only happens on first launch. Click Download to continue."
-        )
+        desc = QLabel("Ninja Shield uses Camoufox — a privacy-hardened Firefox engine.\nIt needs to be downloaded once (~530 MB).\n\nThis only happens on first launch. Click Download to continue.")
         desc.setWordWrap(True)
         desc.setStyleSheet("color: #9ca3af; font-size: 13px; line-height: 1.5;")
         layout.addWidget(desc)
 
         self.status_label = QLabel("")
         self.status_label.setStyleSheet("color: #a78bfa; font-size: 12px;")
-        self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
         self.progress_bar = QProgressBar()
@@ -1347,99 +1019,65 @@ class CamoufoxSetupDialog(QDialog):
         btn_row = QHBoxLayout()
         self.btn_download = QPushButton("Download & Continue")
         self.btn_download.setObjectName("btnPrimary")
-        self.btn_download.setFixedHeight(38)
         self.btn_download.clicked.connect(self._start_download)
         btn_row.addWidget(self.btn_download)
 
         self.btn_exit = QPushButton("Exit")
         self.btn_exit.setObjectName("btnGhost")
-        self.btn_exit.setFixedHeight(38)
         self.btn_exit.clicked.connect(self.reject)
         btn_row.addWidget(self.btn_exit)
-
         layout.addLayout(btn_row)
 
     def _start_download(self):
         self.btn_download.setEnabled(False)
         self.btn_download.setText("Downloading...")
-        self.btn_exit.setText("Cancel")
-        self.btn_exit.setEnabled(True)
-        self.status_label.setText("Please wait, downloading...")
-
-        self.progress_bar.setValue(0)
+        self.status_label.setText("Fetching...")
         self.progress_bar.setVisible(True)
-
-        self._ui_timer = QTimer(self)
-        self._ui_timer.setInterval(50)
-        self._ui_timer.timeout.connect(lambda: QApplication.processEvents())
-        self._ui_timer.start()
 
         self.worker = CamoufoxDownloadWorker()
         self.worker.progress_text.connect(self.status_label.setText)
         self.worker.progress_percent.connect(self.progress_bar.setValue)
         self.worker.finished.connect(self._on_finished)
-        self.btn_exit.clicked.disconnect()
-        self.btn_exit.clicked.connect(self._cancel_download)
         self.worker.start()
 
-    def _cancel_download(self):
-        if hasattr(self, 'worker') and self.worker.isRunning():
-            self.worker.terminate()
-            self.worker.wait()
-        self.reject()
-
     def _on_finished(self, success, error_msg):
-        if hasattr(self, '_ui_timer'):
-            self._ui_timer.stop()
         if success:
+            self.progress_bar.setValue(100)
             self.status_label.setText("✓ Download complete! Launching Ninja Shield...")
             self.setup_complete.emit()
             self.accept()
         else:
             self.status_label.setStyleSheet("color: #f87171; font-size: 12px;")
-            self.status_label.setText(f"Download failed:\n{error_msg}\n\nCheck your internet connection and try again.")
+            self.status_label.setText(f"Download failed:\n{error_msg}")
             self.btn_download.setEnabled(True)
-            self.btn_download.setText("Retry Download")
-            self.btn_exit.setEnabled(True)
-
+            self.btn_download.setText("Retry")
 
 def is_camoufox_installed() -> bool:
-    """Check if Camoufox browser binary is already downloaded."""
     try:
-        from camoufox.pkgman import camoufox_path, INSTALL_DIR
+        from camoufox.pkgman import INSTALL_DIR
         import os
-        if os.path.exists(INSTALL_DIR) and os.listdir(INSTALL_DIR):
-            return True
-        camoufox_path(download_if_missing=False)
-        return True
+        return os.path.exists(INSTALL_DIR) and bool(os.listdir(INSTALL_DIR))
     except Exception:
         return False
+
 # ─── Main Window ──────────────────────────────────────────────────────────────
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Ninja Shield v4")
+        self.setWindowTitle("Ninja Shield v4.1")
         self.setWindowIcon(QIcon(resource_path("icon.ico")))
         self.setMinimumSize(900, 620)
         self.setStyleSheet(STYLE)
-        Path(PROFILES_DIR).mkdir(exist_ok=True)
         self._build_ui()
 
     def closeEvent(self, event):
-        import tempfile
-        import os
-
-        lock_file = os.path.join(tempfile.gettempdir(), "ninjashield.lock")
-
-        try:
-            if os.path.exists(lock_file):
-                os.remove(lock_file)
-        except:
-            pass
-
+        import tempfile, os
+        try: os.remove(os.path.join(tempfile.gettempdir(), "ninjashield.lock"))
+        except: pass
         event.accept()
         QApplication.instance().quit()
         os._exit(0)
+
     def _build_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
@@ -1447,160 +1085,101 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # Header
         header = QFrame()
         header.setObjectName("topBar")
         header.setFixedHeight(52)
         h_layout = QHBoxLayout(header)
-        h_layout.setContentsMargins(20, 0, 20, 0)
-
-        logo_label = QLabel("Ninja Shield")
-        logo_label.setStyleSheet("font-size: 15px; font-weight: 800; color: #a78bfa; letter-spacing: -0.3px; background: transparent;")
-        h_layout.addWidget(logo_label)
+        
+        logo = QLabel("Ninja Shield")
+        logo.setStyleSheet("font-size: 15px; font-weight: 800; color: #a78bfa;")
+        h_layout.addWidget(logo)
         h_layout.addStretch()
 
-        # License days remaining badge
+        # -- Header Affiliate Button --
+        self.header_buy_btn = QPushButton("🛒 Buy Proxies")
+        self.header_buy_btn.setObjectName("btnGhost")
+        # Sleek styling to fit perfectly in the header bar
+        self.header_buy_btn.setStyleSheet("color: #a78bfa; border: 1px solid #4c1d95; padding: 3px 10px; font-size: 11px; border-radius: 5px;")
+        self.header_buy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.header_buy_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://app.proxy-cheap.com/r/OuBVeq")))
+        h_layout.addWidget(self.header_buy_btn)
+        
+        h_layout.addSpacing(12)
+
         self.license_badge = QLabel("")
-        self.license_badge.setStyleSheet(
-            "background: #1a1b2a; border: 1px solid #2a2b3d; border-radius: 5px;"
-            "color: #4ade80; font-size: 11px; font-family: 'Consolas', monospace;"
-            "padding: 3px 10px;"
-        )
         self._refresh_license_badge()
         h_layout.addWidget(self.license_badge)
-
-        h_layout.addSpacing(10)
-
-        version_label = QLabel("v4.0")
-        version_label.setStyleSheet("color: #2a2b3d; font-size: 11px; font-family: 'Consolas', monospace;")
-        h_layout.addWidget(version_label)
-
+        
+        version = QLabel("v4.1")
+        version.setStyleSheet("color: #2a2b3d; font-size: 11px; font-family: 'Consolas', monospace;")
+        h_layout.addWidget(version)
         main_layout.addWidget(header)
 
-        # Tabs
         self.tabs = QTabWidget()
-        self.tabs.setDocumentMode(True)
-
         self.profiles_tab = ProfilesTab()
         self.profiles_tab.status_message.connect(self._set_status)
-
         self.launch_tab = LaunchTab()
         self.launch_tab.status_message.connect(self._set_status)
-
         self.tabs.addTab(self.profiles_tab, "  Profiles  ")
         self.tabs.addTab(self.launch_tab,   "  Launch    ")
-
         main_layout.addWidget(self.tabs)
 
-        # Status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self._set_status("Ready")
 
     def _refresh_license_badge(self):
-        """Update the license days-remaining badge in the header."""
         try:
             result = check_license()
             if result["status"] == "active":
                 days = result["days_left"]
-                if days <= 5:
-                    color = "#f87171"    # red — nearly expired
-                elif days <= 15:
-                    color = "#f59e0b"    # amber — warning
-                else:
-                    color = "#4ade80"    # green — healthy
-                self.license_badge.setStyleSheet(
-                    f"background: #1a1b2a; border: 1px solid #2a2b3d; border-radius: 5px;"
-                    f"color: {color}; font-size: 11px; font-family: 'Consolas', monospace;"
-                    f"padding: 3px 10px;"
-                )
+                color = "#f87171" if days <= 5 else "#f59e0b" if days <= 15 else "#4ade80"
+                self.license_badge.setStyleSheet(f"background: #1a1b2a; border: 1px solid #2a2b3d; border-radius: 5px; color: {color}; font-size: 11px; padding: 3px 10px;")
                 self.license_badge.setText(f"🔑  {days} days left")
-            else:
-                self.license_badge.setStyleSheet(
-                    "background: #1f0a0a; border: 1px solid #3f1e1e; border-radius: 5px;"
-                    "color: #f87171; font-size: 11px; font-family: 'Consolas', monospace;"
-                    "padding: 3px 10px;"
-                )
-                self.license_badge.setText("🔑  License expired")
-        except Exception:
-            self.license_badge.setText("")
+        except Exception: pass
 
     def _set_status(self, msg):
         self.status_bar.showMessage(f"  {msg}", 8000)
 
-
-# ─── Entry Point ──────────────────────────────────────────────────────────────
 def main():
-    import tempfile
-    import atexit
-
-    # Single instance lock — prevents multiple app instances
+    import sys
+    import asyncio
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    import tempfile, atexit
     lock_file = os.path.join(tempfile.gettempdir(), "ninjashield.lock")
     try:
         if os.path.exists(lock_file):
-            try:
-                with open(lock_file, 'r') as f:
-                    old_pid = int(f.read().strip())
+            with open(lock_file, 'r') as f: old_pid = int(f.read().strip())
+            import psutil
+            if psutil.pid_exists(old_pid):
+                app = QApplication(sys.argv)
+                QMessageBox.warning(None, "Ninja Shield Running", "Ninja Shield is already running.")
+                sys.exit(0)
+            else: os.remove(lock_file)
+    except: pass
 
-
-                import psutil
-                if psutil.pid_exists(old_pid):
-                    app = QApplication(sys.argv)
-                    QMessageBox.warning(
-                        None,
-                        "Ninja Shield Already Running",
-                        "Ninja Shield is already running.\nCheck your taskbar."
-                    )
-                    sys.exit(0)
-                else:
-                    # 🔥 OLD PID DEAD → REMOVE STALE LOCK
-                    os.remove(lock_file)
-            except:
-                # 🔥 CORRUPT LOCK FILE → REMOVE IT
-                try:
-                    os.remove(lock_file)
-                except:
-                    pass
-    except Exception:
-        pass
-
-    # Write current PID to lock file
-    with open(lock_file, 'w') as f:
-        f.write(str(os.getpid()))
-    def remove_lock():
-        try:
-            if os.path.exists(lock_file):
-                os.remove(lock_file)
-        except:
-            pass
-
-    atexit.register(remove_lock)
+    with open(lock_file, 'w') as f: f.write(str(os.getpid()))
+    atexit.register(lambda: os.remove(lock_file) if os.path.exists(lock_file) else None)
 
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(resource_path("icon.ico")))
-    app.setApplicationName("Ninja Shield")
 
-    # Check Camoufox binary before anything else
     if not is_camoufox_installed():
-        setup = CamoufoxSetupDialog()
-        if setup.exec() != QDialog.DialogCode.Accepted:
+        if CamoufoxSetupDialog().exec() != QDialog.DialogCode.Accepted:
             sys.exit(0)
 
-    result = check_license()
-
-    if result["status"] == "active":
+    if check_license()["status"] == "active":
         window = MainWindow()
         window.show()
         app._main_window = window
     else:
         activation = ActivationWindow()
-
         def on_activated():
             activation.hide()
             window = MainWindow()
             window.show()
             app._main_window = window
-
         activation.activated.connect(on_activated)
         activation.show()
 

@@ -1,7 +1,7 @@
 """
-License Manager - Ninja Shield
+License Manager - Ninja Shield v4.1
 Offline license validation with hardware binding.
-Keys encode expiry duration and are bound to machine Hardware ID.
+Fixed: Removed volatile MAC address dependency. Replaced with permanent Windows MachineGuid.
 """
 
 import hashlib
@@ -9,11 +9,8 @@ import hmac
 import json
 import os
 import platform
-import struct
 import subprocess
-import sys
 from datetime import datetime, timedelta
-from pathlib import Path
 
 # ─── SECRET — CHANGE THIS TO YOUR OWN RANDOM STRING ─────────────────────────
 # This must be IDENTICAL in both license_manager.py and keygen.py
@@ -25,80 +22,53 @@ LICENSE_FILE = os.path.join(os.path.expanduser("~"), ".fbpm_license")
 
 
 def get_hardware_id() -> str:
-    """Generate a unique Hardware ID from this machine."""
+    """Generate a unique Hardware ID using highly stable OS/Hardware anchors."""
     parts = []
 
-    # Garbage values that wmic returns on many OEM machines or after
-    # Windows updates — excluding these keeps the hardware ID stable.
-    GARBAGE_VALUES = {
-        "", "to be filled by o.e.m.", "default string", "none",
-        "not applicable", "unknown", "system serial number",
-        "chassis serial number", "to be filled by o.e.m",
-        "00000000", "0000000000000000",
-    }
+    if platform.system() == "Windows":
+        # 1. Windows MachineGuid (The most stable anchor, survives all network/VPN changes)
+        try:
+            import winreg
+            registry = winreg.HKEY_LOCAL_MACHINE
+            address = r"SOFTWARE\Microsoft\Cryptography"
+            # Check both 64-bit and 32-bit registry views to be absolutely safe
+            try:
+                key = winreg.OpenKey(registry, address, 0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
+            except OSError:
+                key = winreg.OpenKey(registry, address, 0, winreg.KEY_READ | winreg.KEY_WOW64_32KEY)
+            
+            value, _ = winreg.QueryValueEx(key, "MachineGuid")
+            winreg.CloseKey(key)
+            if value:
+                parts.append(f"GUID:{value.strip()}")
+        except Exception:
+            pass
 
-    def is_valid(val: str) -> bool:
-        return val.lower().strip() not in GARBAGE_VALUES and len(val.strip()) >= 4
-
-    try:
-        if platform.system() == "Windows":
-            # CPU ProcessorId
-            result = subprocess.check_output(
-                "wmic cpu get ProcessorId /value",
+        # 2. Motherboard Serial Number (Physical hardware anchor)
+        GARBAGE_VALUES = {
+            "", "to be filled by o.e.m.", "default string", "none",
+            "not applicable", "unknown", "system serial number",
+            "chassis serial number", "to be filled by o.e.m",
+            "00000000", "0000000000000000",
+        }
+        try:
+            mb_result = subprocess.check_output(
+                'powershell -NoProfile -Command "Get-CimInstance Win32_BaseBoard | Select-Object -First 1 -ExpandProperty SerialNumber"',
                 shell=True, stderr=subprocess.DEVNULL
-            ).decode(errors="ignore")
-            for line in result.splitlines():
-                if "ProcessorId=" in line:
-                    val = line.split("=", 1)[1].strip()
-                    if is_valid(val):
-                        parts.append("CPU:" + val)
+            ).decode(errors="ignore").strip()
+            
+            if mb_result and mb_result.lower() not in GARBAGE_VALUES and len(mb_result) >= 4:
+                parts.append(f"MB:{mb_result}")
+        except Exception:
+            pass
 
-            # Motherboard serial
-            result = subprocess.check_output(
-                "wmic baseboard get SerialNumber /value",
-                shell=True, stderr=subprocess.DEVNULL
-            ).decode(errors="ignore")
-            for line in result.splitlines():
-                if "SerialNumber=" in line:
-                    val = line.split("=", 1)[1].strip()
-                    if is_valid(val):
-                        parts.append("MB:" + val)
-
-            # Disk serial — first valid one only
-            result = subprocess.check_output(
-                "wmic diskdrive get SerialNumber /value",
-                shell=True, stderr=subprocess.DEVNULL
-            ).decode(errors="ignore")
-            for line in result.splitlines():
-                if "SerialNumber=" in line:
-                    val = line.split("=", 1)[1].strip()
-                    if is_valid(val):
-                        parts.append("DISK:" + val)
-                        break
-    except Exception:
-        pass
-
-    # MAC address — always included as stable anchor
-    try:
-        import uuid as _uuid
-        mac = _uuid.getnode()
-        parts.append("MAC:" + str(hex(mac)))
-    except Exception:
-        pass
-
+    # Fallback if everything else fails (Fallback to hostname, NEVER network MAC)
     if not parts:
-        # Absolute last resort
-        parts.append("USER:" + os.environ.get("USERNAME", "unknown"))
-        parts.append("HOST:" + platform.node())
+        parts.append(f"HOST:{platform.node()}")
+        parts.append(f"USER:{os.environ.get('USERNAME', 'unknown')}")
 
     combined = "|".join(parts)
     return hashlib.sha256(combined.encode()).hexdigest()[:16].upper()
-
-
-def uuid_getnode():
-    """Get MAC address as integer."""
-    import uuid
-    return uuid.getnode()
 
 
 def _sign(data: str) -> str:
@@ -114,10 +84,6 @@ def validate_key_format(key: str) -> dict:
     """
     Validate key format and extract payload.
     Key format: FBPM-DDDD-PPPP-PPPP-SSSS
-    D = duration code (1M or 3M encoded)
-    P = payload (issue date)
-    S = signature
-    Returns dict with valid, duration_days, issue_date or error message.
     """
     key = key.strip().upper().replace(" ", "")
 
@@ -156,10 +122,7 @@ def validate_key_format(key: str) -> dict:
 
 
 def activate_license(key: str) -> dict:
-    """
-    Activate a license key on this machine.
-    Saves binding to disk. Returns status dict.
-    """
+    """Activate a license key on this machine."""
     result = validate_key_format(key)
     if not result["valid"]:
         return {"success": False, "error": result["error"]}
@@ -191,11 +154,9 @@ def activate_license(key: str) -> dict:
         "days_left": (expiry - datetime.now()).days,
     }
 
+
 def check_license() -> dict:
-    """
-    Check if this machine has a valid active license.
-    Returns dict with status, days_left, expiry or error.
-    """
+    """Check if this machine has a valid active license."""
     if not os.path.exists(LICENSE_FILE):
         return {"status": "no_license", "error": "No license found."}
 
@@ -205,7 +166,7 @@ def check_license() -> dict:
     except Exception:
         return {"status": "corrupt", "error": "License file is corrupted."}
 
-    # Verify integrity — prevent manual editing
+    # Verify integrity
     stored_hmac = data.pop("_integrity", "")
     record_str  = json.dumps(data, sort_keys=True)
     expected    = _sign(record_str)
@@ -214,10 +175,10 @@ def check_license() -> dict:
     if not hmac.compare_digest(stored_hmac, expected):
         return {"status": "tampered", "error": "License file has been tampered with."}
 
-    # Check Hardware ID matches this machine
+    # Check Hardware ID
     hw_id = get_hardware_id()
     if data.get("hw_id") != hw_id:
-        return {"status": "wrong_machine", "error": "This license is registered to a different machine."}
+        return {"status": "wrong_machine", "error": "This license belongs to a different machine."}
 
     # Check expiry
     try:
