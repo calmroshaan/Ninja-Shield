@@ -6,9 +6,8 @@ Updated: Proxy-first workflow. "VPN City" rebranded to "Location".
 """
 import sys
 import os
-import os
-import sys
 import re
+import secrets
 from urllib.parse import urlparse
 
 # --- SECURITY HELPERS ---
@@ -356,25 +355,14 @@ class CreateProfileDialog(QDialog):
         try:
             name = _validate_profile_name(raw_name)
         except ValueError as e:
-            from PyQt6.QtWidgets import QMessageBox
             QMessageBox.warning(self, "Invalid Name", str(e))
             return
             
         path = os.path.join(PROFILES_DIR, f"{name}.json")
         if os.path.exists(path):
-            from PyQt6.QtWidgets import QMessageBox
             QMessageBox.warning(self, "Error", f"Profile '{name}' already exists.")
             return
             
-        self.accept()
-        name = self.name_input.text().strip()
-        if not name:
-            QMessageBox.warning(self, "Error", "Profile name cannot be empty.")
-            return
-        path = os.path.join(PROFILES_DIR, f"{name}.json")
-        if os.path.exists(path):
-            QMessageBox.warning(self, "Error", f"Profile '{name}' already exists.")
-            return
         self.accept()
 
     def get_data(self):

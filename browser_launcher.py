@@ -1,24 +1,22 @@
 """
-Browser Launcher v4.4 - Camoufox Edition
-Fixed: Removed rigid viewport to eliminate black bars and cropping. 
-Enabled no_viewport=True for fluid, native Chrome-like responsive resizing.
+Browser Launcher v4.4.1 - Camoufox Edition
+Fixed: Removed strict Screen/Locale constraints to completely prevent 
+BrowserForge dataset crashes ("No headers based on this input" error).
 """
 
 import sys
 import os
 import io
+import asyncio
+import ctypes
+from pathlib import Path
+from fingerprint_engine import load_fingerprint
 
 # -- FIX FOR PYINSTALLER WINDOWED MODE --
 if sys.stdout is None:
     sys.stdout = open(os.devnull, "w")
 if sys.stderr is None:
     sys.stderr = open(os.devnull, "w")
-
-import asyncio
-import ctypes
-from pathlib import Path
-from fingerprint_engine import load_fingerprint
-from browserforge.fingerprints import Screen
 
 # Force UTF-8 encoding for stdout to prevent terminal crashes on Windows
 try:
@@ -51,8 +49,6 @@ async def launch_browser(profile_name: str,
     Path(user_data_dir).mkdir(exist_ok=True)
 
     # -- TAB DOUBLE-CLICK FIX (Zero-Bug Method) -----------------------------
-    # Forces native OS titlebars and disables touch-emulation to restore 1-click tabs
-    # without altering the Playwright engine kwargs.
     try:
         prefs_file = os.path.join(user_data_dir, "user.js")
         with open(prefs_file, "a") as f:
@@ -75,30 +71,16 @@ async def launch_browser(profile_name: str,
 
     # -- Resolution Setup ---------------------------------------------------
     physical_width, physical_height = get_physical_screen()
-    spoofed_width = fp.get("screen_width", 1920)
-    spoofed_height = fp.get("screen_height", 1080)
-
-    # Format the spoofed screen for BrowserForge instead of a raw dictionary
-    spoofed_screen = Screen(
-        min_width=spoofed_width, 
-        max_width=spoofed_width,
-        min_height=spoofed_height, 
-        max_height=spoofed_height
-    )
 
     print(f"\n[{profile_name}] -- Launching ------------------------------")
     print(f"  Engine:   Camoufox (Native binary-level fingerprinting)")
-    print(f"  OS:       {fp.get('os_name', 'Windows')}  |  Platform: {fp.get('platform', 'Win32')}")
+    print(f"  OS:       {fp.get('os_name', 'Windows')}")
     print(f"  Physical: {physical_width}x{physical_height} (Fits your monitor)")
-    print(f"  Spoofed:  {spoofed_width}x{spoofed_height} (What bot-scripts see)")
-    print(f"  Timezone: {fp.get('timezone', 'America/New_York')}  |  Lang: {fp.get('languages', ['en-US'])[0]}")
     
     if proxy_config:
         print(f"  Proxy:    {proxy_config['server']}")
     else:
         print(f"  Proxy:    None (VPN mode or local)")
-    
-    print(f"  WebRTC:   Protected (Native C++ Block)")
 
     # -- Build Camoufox launch kwargs ---------------------------------------
     launch_kwargs = dict(
@@ -106,21 +88,22 @@ async def launch_browser(profile_name: str,
         persistent_context=True,
         user_data_dir=user_data_dir,
         os=fp.get("os_name", "windows").lower(),
-        locale=fp.get("languages", ["en-US"])[0],
-        fonts=fp.get("fonts", ["Arial", "Verdana"]),
+        
+        # FIX 1: Force standard English to prevent Locale database crashes
+        locale="en-US",
+        
         block_webrtc=True,
         timezone_id=fp.get("timezone", "America/New_York"),
         
         # This dictates the initial physical box on your desk
         window=(physical_width, physical_height),
         
-        # THE FIX: This tells the browser to snap the web content to the physical window bounds
-        # rather than forcing a rigid box. This eliminates black bars and cropping.
+        # This tells the browser to snap the web content to the physical window bounds
         no_viewport=True,
         
-        # This properly passes the BrowserForge Screen object to protect the fingerprint
-        screen=spoofed_screen, 
-        
+        # FIX 2: We completely removed the strict `screen=spoofed_screen` constraint.
+        # Camoufox will now automatically select a safe, highly realistic screen 
+        # resolution from its internal database, completely preventing the crash!
         i_know_what_im_doing=True,
     )
 

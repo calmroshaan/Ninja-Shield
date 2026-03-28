@@ -118,6 +118,7 @@ DEVICE_BUNDLES = [
 ]
 def generate_fingerprint(profile_name: str, vpn_city: str = "No VPN (Local)", timezone: str = None) -> dict:
     import secrets
+    import random
     # Generate a cryptographically secure, truly random seed for every new profile
     true_random_seed = secrets.token_hex(8)
     rng  = random.Random(true_random_seed)
@@ -139,14 +140,23 @@ def generate_fingerprint(profile_name: str, vpn_city: str = "No VPN (Local)", ti
         "vpn_city":      vpn_city,
         "vpn_flag":      flag,
         "vpn_hint":      f"Connect VPN to {vpn_city}",
-        "os_name":       bundle["os"],
-        "platform":      bundle["platform"],
-        "user_agent":    bundle["ua"],
-        "screen_width":  bundle["screen"][0],
-        "screen_height": bundle["screen"][1],
+        
+        # Safe fallbacks so it never crashes again
+        "os_name":       bundle.get("os_name", "windows"),
+        "os_version":    bundle.get("os_version", "10.0"),
+        "platform":      "Win32",
+        "user_agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+        
+        # Safely extract the screen dimensions from the new dictionary format
+        "screen_width":  bundle.get("screen", {}).get("width", 1920),
+        "screen_height": bundle.get("screen", {}).get("height", 1080),
+        
+        "cpu":           bundle.get("cpu", 8),
+        "ram":           bundle.get("ram", 8),
+        
         "timezone":      tz,
         "languages":     languages,
-        "fonts":         bundle["fonts"],
+        "fonts":         ["Arial", "Verdana", "Tahoma", "Trebuchet MS", "Times New Roman", "Georgia"],
     }
 
 def save_fingerprint(fp: dict, profiles_dir: str = "profiles"):
