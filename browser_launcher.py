@@ -51,7 +51,7 @@ async def launch_browser(profile_name: str,
     # -- TAB DOUBLE-CLICK FIX (Zero-Bug Method) -----------------------------
     try:
         prefs_file = os.path.join(user_data_dir, "user.js")
-        with open(prefs_file, "a") as f:
+        with open(prefs_file, "w") as f:
             f.write('user_pref("browser.tabs.drawInTitlebar", false);\n')
             f.write('user_pref("browser.tabs.inTitlebar", 0);\n')
             f.write('user_pref("dom.w3c_touch_events.enabled", 0);\n')
@@ -88,27 +88,23 @@ async def launch_browser(profile_name: str,
         persistent_context=True,
         user_data_dir=user_data_dir,
         os=fp.get("os_name", "windows").lower(),
-        
-        # FIX 1: Force standard English to prevent Locale database crashes
         locale="en-US",
-        
         block_webrtc=True,
         timezone_id=fp.get("timezone", "America/New_York"),
         
-        # This dictates the initial physical box on your desk
+        # 1. Draw the physical window to fit the user's exact screen
         window=(physical_width, physical_height),
         
-        # This tells the browser to snap the web content to the physical window bounds
-        no_viewport=True,
+        # 2. FORCE the internal website to stretch to those exact same pixel dimensions!
+        viewport={"width": physical_width, "height": physical_height},
         
-        # FIX 2: We completely removed the strict `screen=spoofed_screen` constraint.
-        # Camoufox will now automatically select a safe, highly realistic screen 
-        # resolution from its internal database, completely preventing the crash!
         i_know_what_im_doing=True,
     )
 
     if proxy_config:
         launch_kwargs["proxy"] = proxy_config
+
+    launch_kwargs["enable_cache"] = True
 
     # --- Try to launch browser ---------------------------------------------
     print(f"  Launching Camoufox...")
