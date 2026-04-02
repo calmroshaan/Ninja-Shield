@@ -1153,7 +1153,7 @@ def is_camoufox_installed() -> bool:
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Ninja Shield v4.1")
+        self.setWindowTitle("Ninja Shield v4.1.1")
         self.setWindowIcon(QIcon(resource_path("icon.ico")))
         self.setMinimumSize(900, 620)
         self.setStyleSheet(STYLE)
@@ -1199,7 +1199,7 @@ class MainWindow(QMainWindow):
         self._refresh_license_badge()
         h_layout.addWidget(self.license_badge)
         
-        version = QLabel("v4.1")
+        version = QLabel("v4.1.1")
         version.setStyleSheet("color: #2a2b3d; font-size: 11px; font-family: 'Consolas', monospace;")
         h_layout.addWidget(version)
         main_layout.addWidget(header)

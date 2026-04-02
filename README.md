@@ -1,107 +1,55 @@
-# FB Profile Manager
+# 🛡️ Ninja Shield — Camoufox Edition (v4.1.1)
 
-A free, open-source browser profile manager that generates unique browser fingerprints for each profile. Built with Python + Playwright + PyQt6 GUI.
+A premium, commercial-grade browser profile manager designed to bypass advanced anti-bot systems. Built with Python, PyQt6, and powered by the **Camoufox** native fingerprinting engine.
 
-> Manage multiple browser profiles on the same PC — each with a completely isolated identity: unique canvas fingerprint, WebGL, timezone, language, screen resolution, and cookie storage.
-
----
-
-## Features
-
-- Unique browser fingerprint per profile (canvas, WebGL, audio, navigator)
-- Free-text VPN city input — type any city, timezone auto-detected via API
-- 100% isolated cookie & localStorage per profile
-- Pre-launch VPN reminder so you never forget which city to connect
-- Proxy support per profile (http / socks5)
-- Professional PyQt6 GUI — tabbed interface, search, one-click actions
-- Completely free — only needs Python + Playwright + PyQt6
+> Manage multiple isolated browser profiles on a single machine. Unlike traditional Chromium anti-detects that rely on easily detected JavaScript injections, Ninja Shield uses Camoufox to alter fingerprints at the core binary level.
 
 ---
 
-## What Gets Spoofed Per Profile
+## ✨ Key Features
 
-| Signal | Spoofed |
+- **Binary-Level Stealth:** Powered by Camoufox (a privacy-hardened Firefox engine) to completely bypass advanced JS-based detection methods.
+- **Smart Resolution Calibration:** Mathematically simulates real Windows taskbars and Firefox UI dimensions to ensure your viewport footprint is 100% congruent with real human hardware.
+- **Native Proxy Integration:** Direct HTTP/SOCKS5 proxy support per profile.
+- **Location Spoofing:** Free-text city input automatically detects and applies the correct global timezone and language locales (`Sec-CH-UA-Platform`).
+- **Complete Isolation:** 100% separate cache, cookies, indexedDB, and local storage for every single profile.
+- **Commercial GUI:** A sleek, dark-mode PyQt6 interface with one-click profile generation, cache clearing, and live resolution editing.
+
+---
+
+## 🧬 What Gets Spoofed Per Profile?
+
+| Signal | Protection Method |
 |---|---|
-| User Agent | Yes |
-| Screen Resolution | Yes |
-| Timezone | Yes — auto-matched to VPN city |
-| Language | Yes — auto-matched to VPN city |
-| Platform (Win/Mac/Linux) | Yes |
-| CPU Core Count | Yes |
-| RAM Amount | Yes |
-| WebGL Vendor & Renderer | Yes |
-| Canvas Fingerprint | Yes — unique pixel noise |
-| Audio Fingerprint | Yes — unique buffer noise |
-| Battery API | Yes |
-| Network Connection API | Yes |
-| WebRTC IP Leak | Yes — blocked |
-| Cookies & Storage | Yes — 100% isolated |
-| webdriver detection flag | Yes — removed |
+| User Agent / Client Hints | Native OS & Browser Spoofing |
+| Screen Resolution | Standardized Hardware Pools (e.g., 1080p, 4K, Mac 1440) |
+| Available Desktop Space | Smart Taskbar & UI Subtraction Math |
+| Timezone | Auto-matched via Geocoding API |
+| Language & Locale | Dynamically matched or safely defaulted |
+| WebGL / Canvas / Audio | Native Binary Spoofing (No JS injection flags) |
+| WebRTC | IP Leaks Blocked / Proxied |
+| Headless Detection | Erased (Fakes standard graphical environment) |
 
 ---
 
-## Requirements
+## 🚀 Installation & Setup
 
-- Windows 10/11
-- Python 3.9+ from https://python.org (check "Add Python to PATH" during install)
-- That's it — everything else installs automatically via START.bat
+Ninja Shield is designed to be lightweight. The heavy Camoufox engine (~500MB) will automatically download itself directly from the official repository during your first launch.
 
----
+### Option A: Compiled Release (Easiest)
+1. Download the latest `NinjaShield.exe` from the Releases tab.
+2. Run the executable.
+3. The setup wizard will automatically fetch the Camoufox engine and launch the UI.
 
-## Installation & Run
-
-### Option A — Double click (easiest)
-1. Download or clone this repo
-2. Double-click **`START.bat`**
-3. First run installs all dependencies automatically, then launches the GUI
-
-### Option B — Manual
+### Option B: Developer Setup (Source Code)
+Requires Windows 10/11 and Python 3.9+
 ```bash
+# 1. Clone the repository
+git clone [https://github.com/yourusername/ninja-shield.git](https://github.com/yourusername/ninja-shield.git)
+cd ninja-shield
+
+# 2. Install dependencies
 pip install -r requirements.txt
-playwright install chromium
+
+# 3. Launch the Application
 python gui.py
-```
-
----
-
-## Quick Start
-
-1. Click **+ New Profile** — enter a name and VPN city (e.g. `Dubai, UAE`)
-2. Click **Lookup** — timezone is auto-detected
-3. Click **Create Profile**
-4. Select the profile → click **Launch**
-5. Connect your VPN to the assigned city when prompted
-6. Browser opens with a unique fingerprint
-
----
-
-## Project Structure
-
-```
-fb-profile-manager/
-|- main.py                  <- CLI entry point (legacy)
-|- gui.py                   <- PyQt6 GUI (main app)
-|- fingerprint_engine.py    <- Fingerprint generator + timezone API
-|- browser_launcher.py      <- Playwright browser launcher with stealth JS
-|- START.bat                <- Windows one-click launcher
-|- FIX_DEPENDENCIES.bat     <- Run this if START.bat has dependency issues
-|- requirements.txt
-|- profiles/                <- Created on first run (gitignored)
-    |- fb_01.json           <- Per-profile fingerprint config
-    |- browser_data_fb_01/  <- Isolated browser storage
-```
-
----
-
-## Notes
-
-- `profiles/` folder is gitignored — your profile data stays private
-- Each profile's fingerprint is deterministic (same name = same fingerprint every run)
-- Browser window is fixed at 1280x800 — the spoofed screen size reported to websites is separate and unique per profile
-- Timezone lookup uses OpenStreetMap (geocoding) + TimeZoneDB API — requires internet
-
----
-
-## License
-
-MIT — free to use, modify, and share.

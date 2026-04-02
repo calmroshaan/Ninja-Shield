@@ -94,10 +94,7 @@ async def launch_browser(profile_name: str,
         block_webrtc=True,
         timezone_id=fp.get("timezone", "America/New_York"),
         
-        # 1. Draw the physical window using safe standard dimensions
         window=(safe_width, safe_height),
-        
-        # 2. FORCE the internal website to stretch to those exact same pixel dimensions!
         viewport={"width": safe_width, "height": safe_height},
         
         i_know_what_im_doing=True,

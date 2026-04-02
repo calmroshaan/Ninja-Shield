@@ -1,6 +1,6 @@
 [Setup]
 AppName=Ninja Shield
-AppVersion=4.1
+AppVersion=V4.1.1
 AppPublisher=Roshaan
 DefaultDirName={autopf}\NinjaShield
 DefaultGroupName=Ninja Shield
