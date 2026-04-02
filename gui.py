@@ -57,7 +57,7 @@ from PyQt6.QtWidgets import (
     QTabWidget, QTableWidget, QTableWidgetItem, QPushButton, QLabel,
     QLineEdit, QDialog, QDialogButtonBox, QMessageBox, QHeaderView,
     QFrame, QSplitter, QTextEdit, QFormLayout, QScrollArea, QGridLayout,
-    QAbstractItemView, QStatusBar, QProgressDialog, QProgressBar
+    QAbstractItemView, QStatusBar, QProgressDialog, QProgressBar, QComboBox
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize, QUrl
 from PyQt6.QtGui import QFont, QColor, QPalette, QIcon, QDesktopServices
@@ -303,6 +303,24 @@ class CreateProfileDialog(QDialog):
         city_widget = QWidget()
         city_widget.setLayout(city_row)
         form.addRow("Location:", city_widget)
+        
+        # --- NEW: Expanded Screen Resolution Dropdown ---
+        self.screen_combo = QComboBox()
+        self.screen_combo.addItems([
+            "Random",
+            "1920x1080 (Standard Desktop)",
+            "1366x768 (Standard Laptop)",
+            "1600x900 (Office Monitor)",
+            "1536x864 (Scaled Windows)",
+            "1440x900 (Standard Mac/Laptop)",
+            "1280x720 (Budget HD Laptop)",
+            "2560x1440 (2K Monitor)",
+            "3840x2160 (4K Monitor)"
+        ])
+        self.screen_combo.setStyleSheet("QComboBox { background: #1a1b2a; border: 1px solid #2a2b3d; border-radius: 6px; padding: 8px 12px; color: #e5e7eb; font-size: 12px; }")
+        form.addRow("Resolution:", self.screen_combo)
+        # ---------------------------------------
+        
         layout.addLayout(form)
 
         self.tz_label = QLabel("Timezone: (auto-detected after lookup)")
@@ -366,7 +384,12 @@ class CreateProfileDialog(QDialog):
         self.accept()
 
     def get_data(self):
-        return {"name": self.name_input.text().strip(), "city": self.city_input.text().strip() or "No VPN (Local)", "timezone": self.timezone_result}
+        return {
+            "name": self.name_input.text().strip(), 
+            "city": self.city_input.text().strip() or "No VPN (Local)", 
+            "timezone": self.timezone_result,
+            "screen": self.screen_combo.currentText().split(" ")[0]
+        }
 
 
 # ─── Edit VPN Dialog ─────────────────────────────────────────────────────────
@@ -539,6 +562,63 @@ class FingerprintDialog(QDialog):
         layout.addWidget(close_btn, alignment=Qt.AlignmentFlag.AlignRight)
 
 
+# ─── Edit Screen Dialog ───────────────────────────────────────────────────────
+class EditScreenDialog(QDialog):
+    def __init__(self, profile_name, current_w, current_h, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"Change Resolution — {profile_name}")
+        self.setMinimumWidth(400)
+        self.setStyleSheet(STYLE)
+        self._build_ui(profile_name, current_w, current_h)
+
+    def _build_ui(self, profile_name, current_w, current_h):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(14)
+        layout.setContentsMargins(24, 24, 24, 24)
+
+        title = QLabel("Change Display Resolution")
+        title.setObjectName("sectionTitle")
+        layout.addWidget(title)
+
+        form = QFormLayout()
+        self.screen_combo = QComboBox()
+        self.screen_combo.addItems([
+            "1920x1080 (Standard Desktop)",
+            "1366x768 (Standard Laptop)",
+            "1600x900 (Office Monitor)",
+            "1536x864 (Scaled Windows)",
+            "1440x900 (Standard Mac/Laptop)",
+            "1280x720 (Budget HD Laptop)",
+            "2560x1440 (2K Monitor)",
+            "3840x2160 (4K Monitor)"
+        ])
+        self.screen_combo.setStyleSheet("QComboBox { background: #1a1b2a; border: 1px solid #2a2b3d; border-radius: 6px; padding: 8px 12px; color: #e5e7eb; font-size: 12px; }")
+        
+        # Pre-select their current resolution
+        current_str = f"{current_w}x{current_h}"
+        for i in range(self.screen_combo.count()):
+            if self.screen_combo.itemText(i).startswith(current_str):
+                self.screen_combo.setCurrentIndex(i)
+                break
+                
+        form.addRow("Resolution:", self.screen_combo)
+        layout.addLayout(form)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setObjectName("btnGhost")
+        cancel_btn.clicked.connect(self.reject)
+        save_btn = QPushButton("Save")
+        save_btn.setObjectName("btnPrimary")
+        save_btn.clicked.connect(self.accept)
+        btn_row.addWidget(cancel_btn)
+        btn_row.addWidget(save_btn)
+        layout.addLayout(btn_row)
+
+    def get_data(self):
+        return self.screen_combo.currentText().split(" ")[0]
+
 # ─── Profiles Tab ─────────────────────────────────────────────────────────────
 class ProfilesTab(QWidget):
     status_message = pyqtSignal(str)
@@ -604,6 +684,10 @@ class ProfilesTab(QWidget):
         self.proxy_btn.setObjectName("btnGhost")
         self.proxy_btn.clicked.connect(self._edit_proxy)
 
+        self.screen_btn = QPushButton("🖵  Resolution")
+        self.screen_btn.setObjectName("btnGhost")
+        self.screen_btn.clicked.connect(self._edit_screen)
+
         self.fp_btn = QPushButton("🔍  Fingerprint")
         self.fp_btn.setObjectName("btnGhost")
         self.fp_btn.clicked.connect(self._view_fp)
@@ -623,7 +707,7 @@ class ProfilesTab(QWidget):
         self.count_label = QLabel("")
         self.count_label.setStyleSheet("color: #4b5563; font-size: 11px;")
 
-        for btn in [self.launch_btn, self.vpn_btn, self.proxy_btn, self.fp_btn, self.regen_btn, self.del_btn, self.clear_btn]:
+        for btn in [self.launch_btn, self.vpn_btn, self.proxy_btn, self.screen_btn, self.fp_btn, self.regen_btn, self.del_btn, self.clear_btn]:
             foot_layout.addWidget(btn)
         foot_layout.addStretch()
         foot_layout.addWidget(self.count_label)
@@ -684,7 +768,7 @@ class ProfilesTab(QWidget):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             data = dlg.get_data()
             self.status_message.emit(f"Creating profile '{data['name']}'...")
-            fp = generate_fingerprint(data["name"], data["city"], data["timezone"])
+            fp = generate_fingerprint(data["name"], data["city"], data["timezone"], data.get("screen", "Random"))
             save_fingerprint(fp, PROFILES_DIR)
             self.refresh()
             self.status_message.emit(f"✓ Profile '{data['name']}' created  |  Location: {data['city']}")
@@ -757,6 +841,23 @@ class ProfilesTab(QWidget):
             fp.pop("proxy", None)
             save_fingerprint(fp, PROFILES_DIR)
             self.refresh()
+    def _edit_screen(self):
+        name = self._selected_name()
+        if not name: return
+        fp = load_fingerprint(name, PROFILES_DIR)
+        dlg = EditScreenDialog(name, fp.get("screen_width", 1920), fp.get("screen_height", 1080), self)
+        
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            new_res = dlg.get_data()
+            try:
+                w, h = map(int, new_res.split("x"))
+                fp["screen_width"] = w
+                fp["screen_height"] = h
+                save_fingerprint(fp, PROFILES_DIR)
+                self.refresh()
+                self.status_message.emit(f"✓ Resolution updated to {new_res} for '{name}'")
+            except Exception:
+                pass
     def _view_fp(self):
         name = self._selected_name()
         if name: FingerprintDialog(name, self).exec()

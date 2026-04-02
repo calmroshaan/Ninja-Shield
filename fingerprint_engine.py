@@ -116,7 +116,7 @@ DEVICE_BUNDLES = [
     {"os_name": "windows", "os_version": "10.0", "screen": {"width": 1600, "height": 900}, "cpu": 4, "ram": 8},
     {"os_name": "windows", "os_version": "10.0", "screen": {"width": 1536, "height": 864}, "cpu": 8, "ram": 8},
 ]
-def generate_fingerprint(profile_name: str, vpn_city: str = "No VPN (Local)", timezone: str = None) -> dict:
+def generate_fingerprint(profile_name: str, vpn_city: str = "No VPN (Local)", timezone: str = None, screen_res: str = "Random") -> dict:
     import secrets
     import random
     # Generate a cryptographically secure, truly random seed for every new profile
@@ -135,6 +135,19 @@ def generate_fingerprint(profile_name: str, vpn_city: str = "No VPN (Local)", ti
     else:
         tz = rng.choice(["America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London"])
 
+    # --- Override screen if user selected a specific one from the dropdown ---
+    if screen_res != "Random" and "x" in screen_res:
+        try:
+            w, h = map(int, screen_res.split("x"))
+            screen_width = w
+            screen_height = h
+        except Exception:
+            screen_width = bundle.get("screen", {}).get("width", 1920)
+            screen_height = bundle.get("screen", {}).get("height", 1080)
+    else:
+        screen_width = bundle.get("screen", {}).get("width", 1920)
+        screen_height = bundle.get("screen", {}).get("height", 1080)
+
     return {
         "profile_name":  profile_name,
         "vpn_city":      vpn_city,
@@ -147,9 +160,9 @@ def generate_fingerprint(profile_name: str, vpn_city: str = "No VPN (Local)", ti
         "platform":      "Win32",
         "user_agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
         
-        # Safely extract the screen dimensions from the new dictionary format
-        "screen_width":  bundle.get("screen", {}).get("width", 1920),
-        "screen_height": bundle.get("screen", {}).get("height", 1080),
+        # Use our newly calculated safe dimensions!
+        "screen_width":  screen_width,
+        "screen_height": screen_height,
         
         "cpu":           bundle.get("cpu", 8),
         "ram":           bundle.get("ram", 8),

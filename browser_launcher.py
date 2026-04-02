@@ -70,12 +70,14 @@ async def launch_browser(profile_name: str,
             proxy_config["password"] = proxy_data.get("password", "")
 
     # -- Resolution Setup ---------------------------------------------------
-    physical_width, physical_height = get_physical_screen()
+    # Pull the safe resolution from the database instead of measuring the laptop
+    safe_width = fp.get("screen_width", 1920)
+    safe_height = fp.get("screen_height", 1080)
 
     print(f"\n[{profile_name}] -- Launching ------------------------------")
     print(f"  Engine:   Camoufox (Native binary-level fingerprinting)")
     print(f"  OS:       {fp.get('os_name', 'Windows')}")
-    print(f"  Physical: {physical_width}x{physical_height} (Fits your monitor)")
+    print(f"  Screen:   {safe_width}x{safe_height} (Safe Anti-Detect Resolution)")
     
     if proxy_config:
         print(f"  Proxy:    {proxy_config['server']}")
@@ -92,11 +94,11 @@ async def launch_browser(profile_name: str,
         block_webrtc=True,
         timezone_id=fp.get("timezone", "America/New_York"),
         
-        # 1. Draw the physical window to fit the user's exact screen
-        window=(physical_width, physical_height),
+        # 1. Draw the physical window using safe standard dimensions
+        window=(safe_width, safe_height),
         
         # 2. FORCE the internal website to stretch to those exact same pixel dimensions!
-        viewport={"width": physical_width, "height": physical_height},
+        viewport={"width": safe_width, "height": safe_height},
         
         i_know_what_im_doing=True,
     )
