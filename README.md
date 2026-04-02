@@ -43,13 +43,50 @@ Ninja Shield is designed to be lightweight. The heavy Camoufox engine (~500MB) w
 
 ### Option B: Developer Setup (Source Code)
 Requires Windows 10/11 and Python 3.9+
-```bash
-# 1. Clone the repository
-git clone [https://github.com/yourusername/ninja-shield.git](https://github.com/yourusername/ninja-shield.git)
-cd ninja-shield
 
-# 2. Install dependencies
-pip install -r requirements.txt
+    # 1. Clone the repository
+    git clone https://github.com/calmroshaan/ninja-shield.git
+    cd ninja-shield
 
-# 3. Launch the Application
-python gui.py
+    # 2. Install dependencies
+    pip install -r requirements.txt
+
+    # 3. Launch the Application
+    python gui.py
+
+
+---
+
+## 📖 Quick Start Guide
+
+1. **Activate License:** Enter your license key on the startup screen.
+2. **Create Profile:** Click **+ New Profile**. Enter a name, select a safe hardware resolution, and assign a VPN City (e.g., `London, UK`).
+3. **Assign Proxy (Optional):** Click the **⇄ Proxy** button on your created profile to route it through a dedicated IP.
+4. **Launch:** Click **▶ Launch**. Your fully isolated, completely spoofed browser session will begin. 
+5. **Manage:** Use the dashboard to clear cache, edit resolutions on the fly, or regenerate fingerprints.
+
+---
+
+## 📁 Architecture
+
+    ninja-shield/
+    ├── gui.py                  # Main PyQt6 Dashboard & UI Logic
+    ├── browser_launcher.py     # Camoufox engine bootstrapper & stealth math
+    ├── fingerprint_engine.py   # Profile generator, JSON storage, and TZ APIs
+    ├── license_manager.py      # RSA license validation system
+    ├── requirements.txt        # Python dependencies
+    └── profiles/               # (Gitignored) User data storage
+        ├── profile_1.json      # Fingerprint parameters
+        └── browser_data_1/     # Isolated Firefox cache and cookies
+
+
+---
+
+## ⚠️ Notes for Users
+- **Resolution Behavior:** To ensure perfect stealth, Ninja Shield forces the browser to match exact monitor standards. If you select a profile resolution equal to your physical monitor (e.g., 1366x768), the browser may sit behind your Windows Taskbar. For the best visual experience, select a resolution slightly smaller than your physical screen (e.g., 1280x720).
+- **Privacy:** Your `profiles/` directory is never tracked or uploaded. All cookie and session data remains strictly local on your machine.
+
+---
+
+## 📄 License
+This software is provided without warranty of any kind.
