@@ -876,8 +876,8 @@ class ProfilesTab(QWidget):
         name = self._selected_name()
         if not name: return
         browser_data = os.path.join(PROFILES_DIR, f"browser_data_{name}")
-        # Updated specifically for Firefox/Camoufox engine caches
-        cache_folders = ["cache2", "startupCache", "shader-cache", "datareporting"]
+        # Updated to include "storage" to permanently nuke Service Worker traps
+        cache_folders = ["cache2", "startupCache", "shader-cache", "datareporting", "storage"]
         freed = 0
         for folder in cache_folders:
             path = os.path.join(browser_data, folder)
