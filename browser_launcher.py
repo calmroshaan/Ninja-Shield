@@ -126,30 +126,28 @@ async def launch_browser(profile_name: str,
 
     launch_kwargs["enable_cache"] = True
 
-    # -- Silent Upload Interceptor Logic (Crash-Proof Process Isolation) --
+    # -- Silent Upload Interceptor Logic (Crash-Proof Native OS Isolation) --
     def get_files_via_dialog(is_multiple):
-        # Runs tkinter in a completely separate isolated process
-        # This prevents the fatal C-level thread crash with PyQt6 and Asyncio
-        script = f"""
-import tkinter as tk
-from tkinter import filedialog
-root = tk.Tk()
-root.attributes('-topmost', True)
-root.withdraw()
-if {is_multiple}:
-    files = filedialog.askopenfilenames(title="Ninja Shield - Select Images")
-    print("|".join(files))
-else:
-    file = filedialog.askopenfilename(title="Ninja Shield - Select Image")
-    print(file)
+        # Uses native Windows PowerShell to trigger the OS file dialog.
+        # Completely immune to Python PATH/venv issues in VS Code and PyInstaller.
+        multi = "$true" if is_multiple else "$false"
+        ps_script = f"""
+Add-Type -AssemblyName System.Windows.Forms
+$ofd = New-Object System.Windows.Forms.OpenFileDialog
+$ofd.Multiselect = {multi}
+$ofd.Title = 'Ninja Shield - Select File(s)'
+if ($ofd.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {{
+    $ofd.FileNames -join '|'
+}}
 """
         try:
-            import sys
+            import sys, subprocess
             kwargs = {}
             if sys.platform == "win32":
                 kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
                 
-            result = subprocess.run(["python", "-c", script], capture_output=True, text=True, **kwargs)
+            # -STA flag strictly required for Windows Forms dialogs to prevent hanging
+            result = subprocess.run(["powershell", "-STA", "-Command", ps_script], capture_output=True, text=True, **kwargs)
             paths = result.stdout.strip().split("|")
             return [p for p in paths if p]
         except Exception:
