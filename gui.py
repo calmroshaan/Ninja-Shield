@@ -696,6 +696,10 @@ class ProfilesTab(QWidget):
         self.regen_btn.setObjectName("btnGhost")
         self.regen_btn.clicked.connect(self._regen_fp)
 
+        self.rename_btn = QPushButton("✎  Rename")
+        self.rename_btn.setObjectName("btnGhost")
+        self.rename_btn.clicked.connect(self._rename_profile)
+
         self.del_btn = QPushButton("✕  Delete")
         self.del_btn.setObjectName("btnDanger")
         self.del_btn.clicked.connect(self._delete_profile)
@@ -707,7 +711,7 @@ class ProfilesTab(QWidget):
         self.count_label = QLabel("")
         self.count_label.setStyleSheet("color: #4b5563; font-size: 11px;")
 
-        for btn in [self.launch_btn, self.vpn_btn, self.proxy_btn, self.screen_btn, self.fp_btn, self.regen_btn, self.del_btn, self.clear_btn]:
+        for btn in [self.launch_btn, self.vpn_btn, self.proxy_btn, self.screen_btn, self.fp_btn, self.regen_btn, self.rename_btn, self.del_btn, self.clear_btn]:
             foot_layout.addWidget(btn)
         foot_layout.addStretch()
         foot_layout.addWidget(self.count_label)
@@ -871,6 +875,46 @@ class ProfilesTab(QWidget):
         new_fp["profile_name"] = name
         save_fingerprint(new_fp, PROFILES_DIR)
         self.refresh()
+
+    def _rename_profile(self):
+        old_name = self._selected_name()
+        if not old_name: return
+        
+        from PyQt6.QtWidgets import QInputDialog, QMessageBox
+        import os
+        
+        new_name, ok = QInputDialog.getText(self, "Rename Profile", f"Enter new name for '{old_name}':")
+        if not ok or not new_name.strip(): return
+        
+        try:
+            new_name = _validate_profile_name(new_name)
+        except ValueError as e:
+            QMessageBox.warning(self, "Invalid Name", str(e))
+            return
+            
+        new_json_path = os.path.join(PROFILES_DIR, f"{new_name}.json")
+        if os.path.exists(new_json_path):
+            QMessageBox.warning(self, "Error", f"Profile '{new_name}' already exists.")
+            return
+            
+        # 1. Update internal JSON name
+        fp = load_fingerprint(old_name, PROFILES_DIR)
+        fp["profile_name"] = new_name
+        
+        # 2. Save new JSON and delete old JSON
+        save_fingerprint(fp, PROFILES_DIR)
+        old_json_path = os.path.join(PROFILES_DIR, f"{old_name}.json")
+        if os.path.exists(old_json_path):
+            os.remove(old_json_path)
+            
+        # 3. Rename the browser data folder to preserve cookies and cache
+        old_data_dir = os.path.join(PROFILES_DIR, f"browser_data_{old_name}")
+        new_data_dir = os.path.join(PROFILES_DIR, f"browser_data_{new_name}")
+        if os.path.exists(old_data_dir):
+            os.rename(old_data_dir, new_data_dir)
+            
+        self.refresh()
+        self.status_message.emit(f"✓ Profile '{old_name}' renamed to '{new_name}'")
 
     def _clear_selected_cache(self):
         name = self._selected_name()

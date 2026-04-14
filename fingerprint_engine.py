@@ -119,11 +119,10 @@ DEVICE_BUNDLES = [
 def generate_fingerprint(profile_name: str, vpn_city: str = "No VPN (Local)", timezone: str = None, screen_res: str = "Random") -> dict:
     import secrets
     import random
-    # Generate a cryptographically secure, truly random seed for every new profile
     true_random_seed = secrets.token_hex(8)
     rng  = random.Random(true_random_seed)
 
-    bundle    = rng.choice(DEVICE_BUNDLES)
+    bundle = rng.choice(DEVICE_BUNDLES)
     region    = _get_region_info(vpn_city)
     languages = region["languages"]
     flag      = region["flag"]
@@ -135,12 +134,10 @@ def generate_fingerprint(profile_name: str, vpn_city: str = "No VPN (Local)", ti
     else:
         tz = rng.choice(["America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London"])
 
-    # --- Override screen if user selected a specific one from the dropdown ---
+    # Read the GUI dropdown selection and save it to the profile
     if screen_res != "Random" and "x" in screen_res:
         try:
-            w, h = map(int, screen_res.split("x"))
-            screen_width = w
-            screen_height = h
+            screen_width, screen_height = map(int, screen_res.split("x"))
         except Exception:
             screen_width = bundle.get("screen", {}).get("width", 1920)
             screen_height = bundle.get("screen", {}).get("height", 1080)

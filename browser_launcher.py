@@ -9,6 +9,10 @@ import os
 import io
 import asyncio
 import ctypes
+import tempfile
+import random
+import subprocess
+from PIL import Image
 from pathlib import Path
 from fingerprint_engine import load_fingerprint
 
@@ -84,6 +88,9 @@ async def launch_browser(profile_name: str,
     else:
         print(f"  Proxy:    None (VPN mode or local)")
 
+    # Map to host machine's actual Downloads folder (Forced forward slashes for Firefox JSON)
+    host_downloads = os.path.join(os.path.expanduser("~"), "Downloads").replace("\\", "/")
+
     # -- Build Camoufox launch kwargs ---------------------------------------
     launch_kwargs = dict(
         headless=headless,
@@ -97,6 +104,20 @@ async def launch_browser(profile_name: str,
         window=(safe_width, safe_height),
         viewport={"width": safe_width, "height": safe_height},
         
+        # Enforce boring, normal hardware to prevent 32-core workstation anomalies
+        config={
+            "navigator.hardwareConcurrency": 8
+        },
+        
+        # DPI Bypass & Host Downloads Routing
+        firefox_user_prefs={
+            "layout.css.devPixelsPerPx": "1.0",
+            "browser.download.folderList": 2,
+            "browser.download.dir": host_downloads,
+            "browser.download.useDownloadDir": True
+        },
+        
+        humanize=True, 
         i_know_what_im_doing=True,
     )
 
@@ -104,6 +125,77 @@ async def launch_browser(profile_name: str,
         launch_kwargs["proxy"] = proxy_config
 
     launch_kwargs["enable_cache"] = True
+
+    # -- Silent Upload Interceptor Logic (Crash-Proof Process Isolation) --
+    def get_files_via_dialog(is_multiple):
+        # Runs tkinter in a completely separate isolated process
+        # This prevents the fatal C-level thread crash with PyQt6 and Asyncio
+        script = f"""
+import tkinter as tk
+from tkinter import filedialog
+root = tk.Tk()
+root.attributes('-topmost', True)
+root.withdraw()
+if {is_multiple}:
+    files = filedialog.askopenfilenames(title="Ninja Shield - Select Images")
+    print("|".join(files))
+else:
+    file = filedialog.askopenfilename(title="Ninja Shield - Select Image")
+    print(file)
+"""
+        try:
+            import sys
+            kwargs = {}
+            if sys.platform == "win32":
+                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+                
+            result = subprocess.run(["python", "-c", script], capture_output=True, text=True, **kwargs)
+            paths = result.stdout.strip().split("|")
+            return [p for p in paths if p]
+        except Exception:
+            return []
+
+    async def handle_filechooser(file_chooser):
+        print("  [Ninja Shield] Intercepting file upload...")
+        loop = asyncio.get_running_loop()
+        file_paths = await loop.run_in_executor(None, get_files_via_dialog, file_chooser.is_multiple)
+
+        if not file_paths:
+            await file_chooser.set_files([])
+            return
+
+        clean_paths = []
+        temp_dir = tempfile.gettempdir()
+
+        for path in file_paths:
+            try:
+                # 1. Open and standardize image
+                img = Image.open(path)
+                if img.mode in ('RGBA', 'P'): img = img.convert('RGB')
+                
+                # 2. Strip EXIF by dumping raw pixels to a new canvas
+                clean_img = Image.new(img.mode, img.size)
+                clean_img.putdata(list(img.getdata()))
+
+                # 3. Hash Obliteration (Alter exactly 1 pixel slightly)
+                pixels = clean_img.load()
+                x, y = random.randint(0, img.width-1), random.randint(0, img.height-1)
+                r, g, b = pixels[x, y]
+                pixels[x, y] = (max(0, r-1), g, b)
+
+                # 4. Save to hidden temp folder
+                base = os.path.basename(path)
+                name, ext = os.path.splitext(base)
+                temp_path = os.path.join(temp_dir, f"ns_clean_{random.randint(1000,9999)}.jpg")
+                clean_img.save(temp_path, "JPEG", quality=random.randint(92, 97))
+                clean_paths.append(temp_path)
+                print(f"  [Ninja Shield] Scrubbed and rebuilt hash for: {base}")
+            except Exception as e:
+                print(f"  [WARN] Failed to clean image: {e}. Uploading original.")
+                clean_paths.append(path)
+
+        # Inject the scrubbed files into the Facebook webpage
+        await file_chooser.set_files(clean_paths)
 
     # --- Try to launch browser ---------------------------------------------
     print(f"  Launching Camoufox...")
@@ -114,7 +206,11 @@ async def launch_browser(profile_name: str,
             # Get persistent page or open a new one
             try:
                 page = browser.pages[0] if browser.pages else await browser.new_page()
-                print(f"  Page opened.")
+                
+                # Activate the Silent File Interceptor
+                page.on("filechooser", lambda fc: asyncio.create_task(handle_filechooser(fc)))
+                
+                print(f"  Page opened. Upload Interceptor Active.")
             except Exception as e:
                 print(f"  ERROR: Could not get/create page: {e}")
                 raise
