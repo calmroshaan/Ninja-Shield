@@ -126,75 +126,6 @@ async def launch_browser(profile_name: str,
 
     launch_kwargs["enable_cache"] = True
 
-    # -- Silent Upload Interceptor Logic (Crash-Proof Native OS Isolation) --
-    def get_files_via_dialog(is_multiple):
-        # Uses native Windows PowerShell to trigger the OS file dialog.
-        # Completely immune to Python PATH/venv issues in VS Code and PyInstaller.
-        multi = "$true" if is_multiple else "$false"
-        ps_script = f"""
-Add-Type -AssemblyName System.Windows.Forms
-$ofd = New-Object System.Windows.Forms.OpenFileDialog
-$ofd.Multiselect = {multi}
-$ofd.Title = 'Ninja Shield - Select File(s)'
-if ($ofd.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {{
-    $ofd.FileNames -join '|'
-}}
-"""
-        try:
-            import sys, subprocess
-            kwargs = {}
-            if sys.platform == "win32":
-                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-                
-            # -STA flag strictly required for Windows Forms dialogs to prevent hanging
-            result = subprocess.run(["powershell", "-STA", "-Command", ps_script], capture_output=True, text=True, **kwargs)
-            paths = result.stdout.strip().split("|")
-            return [p for p in paths if p]
-        except Exception:
-            return []
-
-    async def handle_filechooser(file_chooser):
-        print("  [Ninja Shield] Intercepting file upload...")
-        loop = asyncio.get_running_loop()
-        file_paths = await loop.run_in_executor(None, get_files_via_dialog, file_chooser.is_multiple)
-
-        if not file_paths:
-            await file_chooser.set_files([])
-            return
-
-        clean_paths = []
-        temp_dir = tempfile.gettempdir()
-
-        for path in file_paths:
-            try:
-                # 1. Open and standardize image
-                img = Image.open(path)
-                if img.mode in ('RGBA', 'P'): img = img.convert('RGB')
-                
-                # 2. Strip EXIF by dumping raw pixels to a new canvas
-                clean_img = Image.new(img.mode, img.size)
-                clean_img.putdata(list(img.getdata()))
-
-                # 3. Hash Obliteration (Alter exactly 1 pixel slightly)
-                pixels = clean_img.load()
-                x, y = random.randint(0, img.width-1), random.randint(0, img.height-1)
-                r, g, b = pixels[x, y]
-                pixels[x, y] = (max(0, r-1), g, b)
-
-                # 4. Save to hidden temp folder
-                base = os.path.basename(path)
-                name, ext = os.path.splitext(base)
-                temp_path = os.path.join(temp_dir, f"ns_clean_{random.randint(1000,9999)}.jpg")
-                clean_img.save(temp_path, "JPEG", quality=random.randint(92, 97))
-                clean_paths.append(temp_path)
-                print(f"  [Ninja Shield] Scrubbed and rebuilt hash for: {base}")
-            except Exception as e:
-                print(f"  [WARN] Failed to clean image: {e}. Uploading original.")
-                clean_paths.append(path)
-
-        # Inject the scrubbed files into the Facebook webpage
-        await file_chooser.set_files(clean_paths)
-
     # --- Try to launch browser ---------------------------------------------
     print(f"  Launching Camoufox...")
     try:
@@ -204,11 +135,7 @@ if ($ofd.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {{
             # Get persistent page or open a new one
             try:
                 page = browser.pages[0] if browser.pages else await browser.new_page()
-                
-                # Activate the Silent File Interceptor
-                page.on("filechooser", lambda fc: asyncio.create_task(handle_filechooser(fc)))
-                
-                print(f"  Page opened. Upload Interceptor Active.")
+                print(f"  Page opened.")
             except Exception as e:
                 print(f"  ERROR: Could not get/create page: {e}")
                 raise

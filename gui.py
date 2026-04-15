@@ -59,7 +59,7 @@ from PyQt6.QtWidgets import (
     QFrame, QSplitter, QTextEdit, QFormLayout, QScrollArea, QGridLayout,
     QAbstractItemView, QStatusBar, QProgressDialog, QProgressBar, QComboBox
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize, QUrl
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QSize, QUrl, pyqtSlot
 from PyQt6.QtGui import QFont, QColor, QPalette, QIcon, QDesktopServices
 from fingerprint_engine import (
     generate_fingerprint, save_fingerprint, load_fingerprint,
