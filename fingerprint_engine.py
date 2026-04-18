@@ -91,7 +91,7 @@ DEVICE_BUNDLES = [
     {"os_name": "windows", "os_version": "10.0", "screen": {"width": 1920, "height": 1080}, "cpu": 8, "ram": 16},
     {"os_name": "windows", "os_version": "10.0", "screen": {"width": 1920, "height": 1080}, "cpu": 4, "ram": 8},
     {"os_name": "windows", "os_version": "10.0", "screen": {"width": 1920, "height": 1080}, "cpu": 12, "ram": 16},
-    {"os_name": "windows", "os_version": "10.0", "screen": {"width": 1920, "height": 1080}, "cpu": 16, "ram": 32},
+    {"os_name": "windows", "os_version": "10.0", "screen": {"width": 1920, "height": 1080}, "cpu": 6, "ram": 16},
     {"os_name": "windows", "os_version": "10.0", "screen": {"width": 1920, "height": 1080}, "cpu": 6, "ram": 8},
     {"os_name": "windows", "os_version": "10.0", "screen": {"width": 1920, "height": 1080}, "cpu": 8, "ram": 12},
 
@@ -102,14 +102,14 @@ DEVICE_BUNDLES = [
     {"os_name": "windows", "os_version": "10.0", "screen": {"width": 1366, "height": 768}, "cpu": 2, "ram": 4},
 
     # 1440p (2K) Gaming/Creator Monitors (~10% of users)
-    {"os_name": "windows", "os_version": "10.0", "screen": {"width": 2560, "height": 1440}, "cpu": 16, "ram": 32},
+    {"os_name": "windows", "os_version": "10.0", "screen": {"width": 2560, "height": 1440}, "cpu": 12, "ram": 32},
     {"os_name": "windows", "os_version": "10.0", "screen": {"width": 2560, "height": 1440}, "cpu": 12, "ram": 16},
     {"os_name": "windows", "os_version": "10.0", "screen": {"width": 2560, "height": 1440}, "cpu": 8, "ram": 16},
-    {"os_name": "windows", "os_version": "10.0", "screen": {"width": 2560, "height": 1440}, "cpu": 24, "ram": 32},
+    {"os_name": "windows", "os_version": "10.0", "screen": {"width": 2560, "height": 1440}, "cpu": 8, "ram": 32},
 
     # 4K High-End Displays (~10% of users)
-    {"os_name": "windows", "os_version": "10.0", "screen": {"width": 3840, "height": 2160}, "cpu": 16, "ram": 32},
-    {"os_name": "windows", "os_version": "10.0", "screen": {"width": 3840, "height": 2160}, "cpu": 24, "ram": 64},
+    {"os_name": "windows", "os_version": "10.0", "screen": {"width": 3840, "height": 2160}, "cpu": 12, "ram": 32},
+    {"os_name": "windows", "os_version": "10.0", "screen": {"width": 3840, "height": 2160}, "cpu": 8, "ram": 32},
     {"os_name": "windows", "os_version": "10.0", "screen": {"width": 3840, "height": 2160}, "cpu": 8, "ram": 16},
 
     # Odd/Office resolutions (~5% of users)
@@ -153,9 +153,9 @@ def generate_fingerprint(profile_name: str, vpn_city: str = "No VPN (Local)", ti
         
         # Safe fallbacks so it never crashes again
         "os_name":       bundle.get("os_name", "windows"),
-        "os_version":    bundle.get("os_version", "10.0"),
+        "os_version":    "14.0.0", # Windows 11 platform version mapping
         "platform":      "Win32",
-        "user_agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+        "user_agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0",
         
         # Use our newly calculated safe dimensions!
         "screen_width":  screen_width,

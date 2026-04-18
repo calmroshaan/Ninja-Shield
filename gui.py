@@ -6,6 +6,34 @@ Updated: Proxy-first workflow. "VPN City" rebranded to "Location".
 """
 import sys
 import os
+import traceback
+from datetime import datetime
+
+def log_crash(exctype, value, tb):
+    # Format the error exactly how it looks in the terminal
+    error_message = "".join(traceback.format_exception(exctype, value, tb))
+    
+    # Professional Standard: Route to AppData\Local\Ninja Shield\Logs
+    app_data = os.getenv('LOCALAPPDATA')
+    log_dir = os.path.join(app_data, 'Ninja Shield', 'Logs')
+    
+    # Silently create the Logs folder if it does not exist
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # Generate a timestamped text file so it doesn't overwrite older crashes
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    log_file_path = os.path.join(log_dir, f'crash_{timestamp}.txt')
+    
+    # Write the error
+    with open(log_file_path, 'w', encoding='utf-8') as f:
+        f.write(error_message)
+        
+    # Allow the app to close normally after logging
+    sys.__excepthook__(exctype, value, tb)
+
+# Override the default silent crash behavior globally
+sys.excepthook = log_crash
+
 import re
 import secrets
 from urllib.parse import urlparse
