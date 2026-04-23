@@ -1,5 +1,5 @@
 """
-Ninja Shield - PyQt6 GUI v4.1 (Camoufox Edition)
+Ninja Shield - PyQt6 GUI v4.2.0 (Camoufox Edition)
 Fixed: Replaced manual ZIP extraction with native Camoufox pkgman fetcher.
 Fixed: Updated cache clearing paths to target Firefox instead of Chromium.
 Updated: Proxy-first workflow. "VPN City" rebranded to "Location".
@@ -316,23 +316,10 @@ class CreateProfileDialog(QDialog):
         self.name_input.setPlaceholderText("e.g. fb_account_01")
         form.addRow("Profile Name:", self.name_input)
 
-        city_row = QHBoxLayout()
-        self.city_input = QLineEdit()
-        self.city_input.setPlaceholderText("e.g. London, UK  (leave blank = local)")
-        self.city_input.textChanged.connect(self._on_city_changed)
-        city_row.addWidget(self.city_input)
-
-        self.lookup_btn = QPushButton("Lookup")
-        self.lookup_btn.setObjectName("btnGhost")
-        self.lookup_btn.setFixedWidth(75)
-        self.lookup_btn.clicked.connect(self._lookup_timezone)
-        city_row.addWidget(self.lookup_btn)
-
-        city_widget = QWidget()
-        city_widget.setLayout(city_row)
-        form.addRow("Location:", city_widget)
+        self.proxy_input = QLineEdit()
+        self.proxy_input.setPlaceholderText("http://user:pass@ip:port (leave blank for local)")
+        form.addRow("Proxy:", self.proxy_input)
         
-        # --- NEW: Expanded Screen Resolution Dropdown ---
         self.screen_combo = QComboBox()
         self.screen_combo.addItems([
             "Random",
@@ -347,13 +334,8 @@ class CreateProfileDialog(QDialog):
         ])
         self.screen_combo.setStyleSheet("QComboBox { background: #1a1b2a; border: 1px solid #2a2b3d; border-radius: 6px; padding: 8px 12px; color: #e5e7eb; font-size: 12px; }")
         form.addRow("Resolution:", self.screen_combo)
-        # ---------------------------------------
         
         layout.addLayout(form)
-
-        self.tz_label = QLabel("Timezone: (auto-detected after lookup)")
-        self.tz_label.setStyleSheet("color: #4b5563; font-size: 11px; font-family: 'Consolas', monospace;")
-        layout.addWidget(self.tz_label)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
@@ -412,10 +394,18 @@ class CreateProfileDialog(QDialog):
         self.accept()
 
     def get_data(self):
+        proxy_raw = self.proxy_input.text().strip()
+        proxy_dict = None
+        if proxy_raw:
+            try:
+                proxy_dict = _parse_proxy_url(proxy_raw)
+            except ValueError as e:
+                QMessageBox.warning(self, "Invalid Proxy", str(e))
+                return None # Stops creation if format is bad
+
         return {
             "name": self.name_input.text().strip(), 
-            "city": self.city_input.text().strip() or "No VPN (Local)", 
-            "timezone": self.timezone_result,
+            "proxy_dict": proxy_dict,
             "screen": self.screen_combo.currentText().split(" ")[0]
         }
 
@@ -799,11 +789,18 @@ class ProfilesTab(QWidget):
         dlg = CreateProfileDialog(self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             data = dlg.get_data()
-            self.status_message.emit(f"Creating profile '{data['name']}'...")
-            fp = generate_fingerprint(data["name"], data["city"], data["timezone"], data.get("screen", "Random"))
+            if not data: return # Creation aborted due to bad proxy format
+            
+            self.status_message.emit(f"Connecting to proxy to generate '{data['name']}'...")
+            QApplication.processEvents() # Keeps UI from freezing during ping
+            
+            fp = generate_fingerprint(data["name"], data["proxy_dict"], data.get("screen", "Random"))
+            if data["proxy_dict"]:
+                fp["proxy"] = data["proxy_dict"]
+                
             save_fingerprint(fp, PROFILES_DIR)
             self.refresh()
-            self.status_message.emit(f"✓ Profile '{data['name']}' created  |  Location: {data['city']}")
+            self.status_message.emit(f"✓ Profile '{data['name']}' created | Location: {fp.get('vpn_city', 'Local')}")
 
     def _launch_selected(self):
         name = self._selected_name()
@@ -863,9 +860,25 @@ class ProfilesTab(QWidget):
             raw = dlg.get_proxy_url()
             if raw:
                 try:
-                    fp["proxy"] = _parse_proxy_url(raw)
+                    new_proxy = _parse_proxy_url(raw)
+                    self.status_message.emit("Pinging new proxy to update Geolocation and Timezone...")
+                    QApplication.processEvents()
+                    
+                    # Update Geo data to match new proxy
+                    from fingerprint_engine import get_jittered_geo_tz
+                    lat, lon, tz, city, flag = get_jittered_geo_tz(new_proxy)
+                    
+                    fp["proxy"] = new_proxy
+                    if lat and lon:
+                        fp["latitude"] = lat
+                        fp["longitude"] = lon
+                        fp["timezone"] = tz
+                        fp["vpn_city"] = city
+                        fp["vpn_flag"] = flag
+                        
                     save_fingerprint(fp, PROFILES_DIR)
                     self.refresh()
+                    self.status_message.emit("✓ Proxy and Geolocation updated successfully.")
                 except ValueError as e:
                     from PyQt6.QtWidgets import QMessageBox
                     QMessageBox.warning(self, "Invalid Proxy", str(e))
@@ -1225,7 +1238,7 @@ def is_camoufox_installed() -> bool:
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Ninja Shield v4.1.1")
+        self.setWindowTitle("Ninja Shield v4.2.0")
         self.setWindowIcon(QIcon(resource_path("icon.ico")))
         self.setMinimumSize(900, 620)
         self.setStyleSheet(STYLE)
@@ -1271,7 +1284,7 @@ class MainWindow(QMainWindow):
         self._refresh_license_badge()
         h_layout.addWidget(self.license_badge)
         
-        version = QLabel("v4.1.1")
+        version = QLabel("v4.2.0")
         version.setStyleSheet("color: #2a2b3d; font-size: 11px; font-family: 'Consolas', monospace;")
         h_layout.addWidget(version)
         main_layout.addWidget(header)
@@ -1283,6 +1296,7 @@ class MainWindow(QMainWindow):
         self.launch_tab.status_message.connect(self._set_status)
         self.tabs.addTab(self.profiles_tab, "  Profiles  ")
         self.tabs.addTab(self.launch_tab,   "  Launch    ")
+        self.tabs.currentChanged.connect(lambda idx: self.launch_tab._refresh_list() if idx == 1 else None)
         main_layout.addWidget(self.tabs)
 
         self.status_bar = QStatusBar()

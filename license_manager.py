@@ -1,5 +1,5 @@
 """
-License Manager - Ninja Shield v4.1
+License Manager - Ninja Shield v4.2.0
 Offline license validation with hardware binding.
 Fixed: Removed volatile MAC address dependency. Replaced with permanent Windows MachineGuid.
 """

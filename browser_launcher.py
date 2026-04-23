@@ -1,5 +1,5 @@
 """
-Browser Launcher v4.4.1 - Camoufox Edition
+Browser Launcher v4.2.0 - Camoufox Edition
 Fixed: Removed strict Screen/Locale constraints to completely prevent 
 BrowserForge dataset crashes ("No headers based on this input" error).
 """
@@ -143,12 +143,34 @@ async def launch_browser(profile_name: str,
             "layout.css.devPixelsPerPx": "1.0",
             "browser.download.folderList": 2,
             "browser.download.dir": host_downloads,
-            "browser.download.useDownloadDir": True
+            "browser.download.useDownloadDir": True,
+            "dom.serviceWorkers.enabled": True,
+            
+            # --- THE FIREFOX GEO-NUKE INJECTION (PART 1) ---
+            "geo.provider.ms-windows-location": False,
+            "geo.provider.use_corelocation": False,
+            "geo.provider.use_geoclue": False,
+            "geo.enabled": True,
+            "geo.prompt.testing": True,
+            "geo.prompt.testing.allow": True,
+            "geo.prompt.open_system_prefs": False,  # <--- THE NEW OS KILL SWITCH
+            "permissions.default.geo": 1            # <--- FORCE AUTO-ALLOW
+            # -----------------------------------------------
         },
         
         humanize=True, 
         i_know_what_im_doing=True,
     )
+
+    # --- DYNAMIC GEO-SPOOFING INJECTION (PART 2) ---
+    if fp.get("latitude") and fp.get("longitude"):
+        # 1. Force the engine to read a hardcoded JSON string instead of your real OS GPS chip
+        launch_kwargs["firefox_user_prefs"]["geo.provider.network.url"] = f'data:application/json,{{"location": {{"lat": {fp.get("latitude")}, "lng": {fp.get("longitude")}}}, "accuracy": 10.0}}'
+        
+        # 2. Keep Playwright's native injection as a secondary layer
+        launch_kwargs["geolocation"] = {"latitude": fp.get("latitude"), "longitude": fp.get("longitude")}
+        launch_kwargs["permissions"] = ["geolocation"]
+    # -----------------------------------------------
 
     if proxy_config:
         launch_kwargs["proxy"] = proxy_config

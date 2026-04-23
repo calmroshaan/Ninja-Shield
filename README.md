@@ -1,4 +1,4 @@
-# 🛡️ Ninja Shield — Camoufox Edition (v4.1.1)
+# 🛡️ Ninja Shield — Camoufox Edition (v4.2.0)
 
 A premium, commercial-grade browser profile manager designed to bypass advanced anti-bot systems. Built with Python, PyQt6, and powered by the **Camoufox** native fingerprinting engine.
 
